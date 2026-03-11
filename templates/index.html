@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Payable Automation{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Upload Invoices</h2>
+    <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data"
+          style="display: flex; align-items: center; gap: 12px;">
+        <input type="file" name="file" accept=".pdf" required>
+        <button type="submit" class="btn btn-primary">Upload & Split</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Batches Ready for Pre-Screening</h2>
+    {% if batches %}
+    <table>
+        <thead>
+            <tr>
+                <th>Batch</th>
+                <th>Source File</th>
+                <th>Pages</th>
+                <th>Created</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for batch in batches %}
+            <tr>
+                <td><code>{{ batch.batch_id }}</code></td>
+                <td>{{ batch.source_file }}</td>
+                <td>{{ batch.total_pages }}</td>
+                <td>{{ batch.created[:16] }}</td>
+                <td>
+                    <a href="{{ url_for('prescreen', batch_id=batch.batch_id) }}"
+                       class="btn btn-primary btn-sm">Review</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: #999;">No batches yet. Upload a PDF to get started.</p>
+    {% endif %}
+</div>
+
+{% if pm_inbox %}
+<div class="card">
+    <h2>Coded PDFs Ready for Export</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>File</th>
+                <th>Pages</th>
+                <th>Coded</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in pm_inbox %}
+            <tr>
+                <td>{{ item.filename }}</td>
+                <td>{{ item.total_pages }}</td>
+                <td>{{ item.coded_pages }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div style="margin-top: 12px;">
+        <a href="{{ url_for('collect_view') }}" class="btn btn-success">View & Export</a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

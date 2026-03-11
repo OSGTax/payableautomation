@@ -1,0 +1,52 @@
+# PM-to-Job Assignment Configuration
+# Update this file when jobs or PM assignments change.
+
+project_managers:
+  nick:
+    name: "Nick"
+    jobs:
+      - "25-002"  # STEP BY STEP - OGDENSBURG
+      - "25-003"  # HAMMOND CSD CAPITAL PROJECT
+      - "25-004"  # MALONE TRANSFER STATION
+      - "25-008"  # OGDENSBURG CSD PHASE 1
+      - "25-009"  # PROJECT VIOLET
+      - "26-000"  # 2026 AJK Small Jobs
+
+  frank:
+    name: "Frank"
+    jobs:
+      - "25-010"  # GRASSY GROVE SOLAR EAST
+      - "25-011"  # SAWMILL BAY SOLAR
+
+# Keywords that help identify which job an invoice belongs to.
+# Used during intake to suggest job/PM assignment.
+# Format: keyword (case-insensitive) -> job number
+job_keywords:
+  "step by step": "25-002"
+  "ogdensburg": "25-002"
+  "hammond": "25-003"
+  "malone": "25-004"
+  "transfer station": "25-004"
+  "ogdensburg csd": "25-008"
+  "project violet": "25-009"
+  "violet": "25-009"
+  "champlain": "25-009"
+  "cotton lane": "25-009"
+  "grassy grove": "25-010"
+  "sawmill bay": "25-011"
+  "sawmill": "25-011"
+  "ajk small": "26-000"
+  "small jobs": "26-000"
+
+# Overhead GL accounts - invoices with these vendors/accounts
+# are typically coded by AP (you), not PMs.
+overhead_accounts:
+  - "5000"   # Vehicle Expense
+  - "5400"   # Fuel
+  - "5900"   # Shop Supplies
+  - "6060"   # Truck Expense
+  - "6130"   # Travel
+  - "6310"   # Auto Parts
+  - "6330"   # Hardware/Supplies
+  - "6392"   # Meals
+  - "6393"   # Lodging

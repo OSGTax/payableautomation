@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+{% block title %}Pre-Screen - {{ manifest.source_file }}{% endblock %}
+
+{% block extra_styles %}
+.page-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+}
+.page-card {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 16px;
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 16px;
+    transition: border-color 0.2s;
+}
+.page-card.status-overhead { border-color: #f39c12; background: #fff9e6; }
+.page-card.status-grouped { border-color: #3498db; background: #eaf4fd; }
+.page-card.status-skipped { border-color: #e74c3c; background: #fde8e6; }
+.page-card.status-pending { border-color: #e0e0e0; }
+.page-thumb {
+    cursor: pointer;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.page-thumb img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+.page-controls { display: flex; flex-direction: column; gap: 8px; }
+.page-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+.page-header strong { font-size: 16px; }
+.control-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.control-row label { font-size: 13px; font-weight: 600; min-width: 80px; }
+.control-row select, .control-row input { flex: 1; min-width: 150px; }
+.status-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+.status-btn {
+    padding: 6px 12px;
+    border: 2px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    background: #f0f0f0;
+}
+.status-btn:hover { background: #e0e0e0; }
+.status-btn.active-pending { background: #95a5a6; color: white; }
+.status-btn.active-grouped { background: #3498db; color: white; }
+.status-btn.active-overhead { background: #f39c12; color: white; }
+.status-btn.active-skipped { background: #e74c3c; color: white; }
+.overhead-fields { margin-top: 8px; padding: 10px; background: #fff3cd; border-radius: 4px; }
+.overhead-fields .control-row { margin-bottom: 4px; }
+.text-extract {
+    font-size: 11px;
+    color: #666;
+    max-height: 80px;
+    overflow-y: auto;
+    background: #f9f9f9;
+    padding: 6px;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.suggestion {
+    font-size: 12px;
+    color: #27ae60;
+    font-style: italic;
+}
+.toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.toolbar .info { font-size: 14px; color: #666; }
+/* Modal for enlarged view */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.8);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+}
+.modal-overlay.active { display: flex; }
+.modal-content {
+    max-width: 90vw;
+    max-height: 90vh;
+    overflow: auto;
+    background: white;
+    border-radius: 8px;
+    padding: 8px;
+}
+.modal-content img { max-width: 100%; height: auto; }
+{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <strong>{{ manifest.source_file }}</strong>
+    <span class="info">{{ manifest.total_pages }} pages</span>
+    <div style="flex:1;"></div>
+    <button class="btn btn-primary" onclick="saveAll()">Save Progress</button>
+    <button class="btn btn-success" onclick="saveAndDistribute()">Save & Distribute to PMs</button>
+</div>
+
+<div class="page-grid">
+{% for page in manifest.pages %}
+<div class="page-card status-{{ page.status }}" id="page-{{ page.page_num }}" data-page="{{ page.page_num }}">
+    <div class="page-thumb" onclick="enlargeImage({{ page.page_num }})">
+        <img src="{{ url_for('page_thumbnail', batch_id=batch_id, page_num=page.page_num) }}"
+             alt="Page {{ page.page_num }}" loading="lazy">
+    </div>
+    <div class="page-controls">
+        <div class="page-header">
+            <strong>Page {{ page.page_num }}</strong>
+            {% if page.suggested_job %}
+            <span class="suggestion">Suggested: {{ page.suggested_job }} ({{ page.suggested_pm }})</span>
+            {% endif %}
+        </div>
+
+        <div class="status-buttons">
+            <button class="status-btn {% if page.status == 'pending' %}active-pending{% endif %}"
+                    onclick="setStatus({{ page.page_num }}, 'pending')">Send to PM</button>
+            <button class="status-btn {% if page.group_with_prev %}active-grouped{% endif %}"
+                    onclick="toggleGroupWithPrev({{ page.page_num }})">Group with Previous</button>
+            <button class="status-btn {% if page.status == 'overhead' %}active-overhead{% endif %}"
+                    onclick="setStatus({{ page.page_num }}, 'overhead')">Overhead (I'll Code)</button>
+            <button class="status-btn {% if page.status == 'skipped' %}active-skipped{% endif %}"
+                    onclick="setStatus({{ page.page_num }}, 'skipped')">Skip</button>
+        </div>
+
+        <div class="control-row">
+            <label>Assign PM:</label>
+            <select id="pm-{{ page.page_num }}" onchange="updatePM({{ page.page_num }})">
+                <option value="">Auto-detect</option>
+                {% for pm in pm_list %}
+                <option value="{{ pm.name }}" {% if page.assigned_pm == pm.name %}selected{% endif %}>
+                    {{ pm.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="control-row">
+            <label>Assign Job:</label>
+            <select id="job-{{ page.page_num }}" onchange="updateJob({{ page.page_num }})">
+                <option value="">Auto-detect</option>
+                {% for job in job_list %}
+                <option value="{{ job }}" {% if page.assigned_job == job %}selected{% endif %}>
+                    {{ job }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Overhead coding fields (shown when status is overhead) -->
+        <div class="overhead-fields" id="overhead-{{ page.page_num }}"
+             style="{% if page.status != 'overhead' %}display:none;{% endif %}">
+            <div class="control-row">
+                <label>Vendor:</label>
+                <input type="text" id="oh-vendor-{{ page.page_num }}" placeholder="Vendor code"
+                       value="{{ (page.overhead_coding or {}).get('vendor_number', '') }}">
+            </div>
+            <div class="control-row">
+                <label>GL Account:</label>
+                <input type="text" id="oh-gl-{{ page.page_num }}" placeholder="GL account"
+                       value="{{ (page.overhead_coding or {}).get('gl_account', '') }}">
+            </div>
+            <div class="control-row">
+                <label>Amount:</label>
+                <input type="text" id="oh-amount-{{ page.page_num }}" placeholder="Amount"
+                       value="{{ (page.overhead_coding or {}).get('amount', '') }}">
+            </div>
+            <div class="control-row">
+                <label>Inv #:</label>
+                <input type="text" id="oh-invnum-{{ page.page_num }}" placeholder="Invoice number"
+                       value="{{ (page.overhead_coding or {}).get('inv_number', '') }}">
+            </div>
+            <div class="control-row">
+                <label>Description:</label>
+                <input type="text" id="oh-desc-{{ page.page_num }}" placeholder="Description"
+                       value="{{ (page.overhead_coding or {}).get('description', '') }}">
+            </div>
+        </div>
+
+        {% if page.text_extract %}
+        <details>
+            <summary style="font-size: 12px; color: #666; cursor: pointer;">Extracted Text</summary>
+            <div class="text-extract">{{ page.text_extract }}</div>
+        </details>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+</div>
+
+<!-- Image enlarge modal -->
+<div class="modal-overlay" id="imageModal" onclick="closeModal()">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <img id="modalImage" src="" alt="Enlarged view">
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const batchId = "{{ batch_id }}";
+const pageData = {};
+
+// Initialize page data from server
+{% for page in manifest.pages %}
+pageData[{{ page.page_num }}] = {
+    page_num: {{ page.page_num }},
+    status: "{{ page.status }}",
+    group_with_prev: {{ 'true' if page.group_with_prev else 'false' }},
+    assigned_pm: "{{ page.assigned_pm or '' }}",
+    assigned_job: "{{ page.assigned_job or '' }}",
+    overhead_coding: {{ page.overhead_coding | tojson if page.overhead_coding else '{}' }},
+};
+{% endfor %}
+
+function setStatus(pageNum, status) {
+    const card = document.getElementById('page-' + pageNum);
+    const data = pageData[pageNum];
+
+    // Toggle: if already this status, go back to pending
+    if (data.status === status && status !== 'pending') {
+        data.status = 'pending';
+    } else {
+        data.status = status;
+    }
+
+    // If setting to overhead, ungroup
+    if (data.status === 'overhead') {
+        data.group_with_prev = false;
+    }
+
+    updateCardDisplay(pageNum);
+}
+
+function toggleGroupWithPrev(pageNum) {
+    if (pageNum === 1) return; // Can't group first page
+    const data = pageData[pageNum];
+    data.group_with_prev = !data.group_with_prev;
+    if (data.group_with_prev) {
+        data.status = 'grouped';
+    } else {
+        data.status = 'pending';
+    }
+    updateCardDisplay(pageNum);
+}
+
+function updatePM(pageNum) {
+    pageData[pageNum].assigned_pm = document.getElementById('pm-' + pageNum).value;
+}
+
+function updateJob(pageNum) {
+    pageData[pageNum].assigned_job = document.getElementById('job-' + pageNum).value;
+}
+
+function updateCardDisplay(pageNum) {
+    const card = document.getElementById('page-' + pageNum);
+    const data = pageData[pageNum];
+
+    // Update card border color
+    card.className = 'page-card status-' + data.status;
+
+    // Update button states
+    const buttons = card.querySelectorAll('.status-btn');
+    buttons[0].className = 'status-btn' + (data.status === 'pending' ? ' active-pending' : '');
+    buttons[1].className = 'status-btn' + (data.group_with_prev ? ' active-grouped' : '');
+    buttons[2].className = 'status-btn' + (data.status === 'overhead' ? ' active-overhead' : '');
+    buttons[3].className = 'status-btn' + (data.status === 'skipped' ? ' active-skipped' : '');
+
+    // Show/hide overhead fields
+    const ohFields = document.getElementById('overhead-' + pageNum);
+    ohFields.style.display = data.status === 'overhead' ? 'block' : 'none';
+}
+
+function collectOverheadCoding(pageNum) {
+    return {
+        vendor_number: document.getElementById('oh-vendor-' + pageNum)?.value || '',
+        gl_account: document.getElementById('oh-gl-' + pageNum)?.value || '',
+        amount: document.getElementById('oh-amount-' + pageNum)?.value || '',
+        inv_number: document.getElementById('oh-invnum-' + pageNum)?.value || '',
+        description: document.getElementById('oh-desc-' + pageNum)?.value || '',
+    };
+}
+
+function buildSaveData() {
+    const pages = [];
+    for (const [pageNum, data] of Object.entries(pageData)) {
+        const entry = { ...data };
+        if (data.status === 'overhead') {
+            entry.overhead_coding = collectOverheadCoding(pageNum);
+        }
+        pages.push(entry);
+    }
+    return { pages };
+}
+
+async function saveAll() {
+    const resp = await fetch(`/api/prescreen/${batchId}/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildSaveData()),
+    });
+    if (resp.ok) {
+        alert('Progress saved.');
+    } else {
+        alert('Error saving.');
+    }
+}
+
+async function saveAndDistribute() {
+    // Save first
+    const saveResp = await fetch(`/api/prescreen/${batchId}/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildSaveData()),
+    });
+    if (!saveResp.ok) {
+        alert('Error saving.');
+        return;
+    }
+
+    // Then distribute
+    const distResp = await fetch(`/api/prescreen/${batchId}/distribute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+    });
+    if (distResp.ok) {
+        const result = await distResp.json();
+        const pmFiles = result.results.pm_files || {};
+        const names = Object.keys(pmFiles);
+        alert('Distributed to PMs: ' + (names.length ? names.join(', ') : 'none') +
+              '\nOverhead: ' + (result.results.overhead_count || 0) + ' invoices');
+        window.location.href = '/';
+    } else {
+        alert('Error distributing.');
+    }
+}
+
+function enlargeImage(pageNum) {
+    const modal = document.getElementById('imageModal');
+    const img = document.getElementById('modalImage');
+    img.src = `/prescreen/${batchId}/thumbnail/${pageNum}`;
+    modal.classList.add('active');
+}
+
+function closeModal() {
+    document.getElementById('imageModal').classList.remove('active');
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeModal();
+});
+</script>
+{% endblock %}

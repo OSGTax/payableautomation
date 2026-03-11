@@ -1,0 +1,30 @@
+SAMPLES FOLDER GUIDE
+====================
+
+Place your data files in the appropriate subfolders below.
+
+raw-invoices/
+  - Raw PDF and image invoice files as received from vendors
+  - These are the unprocessed bills before any job coding
+
+vendor-list/
+  - Vendor list with Computerease vendor codes (Excel/CSV)
+
+job-codes/
+  - List of job cost codes that get applied to PDFs via dropdown
+  - GL accounts, cost types, and any related code mappings
+
+ce-import-templates/
+  - Computerease import file templates (XML/CSV formats CE expects)
+  - Any export samples from CE showing the expected structure
+
+pm-coded-invoices/
+  - Example PDFs that have already been coded by a Project Manager
+  - These show what the completed coding looks like
+
+output/
+  - Generated output files will go here (not for sample input)
+
+IMPORTANT: Do not commit files containing sensitive financial data,
+vendor account numbers, or login credentials to the repository.
+Use .gitignore to exclude anything sensitive.

@@ -1,0 +1,32 @@
+# Sensitive data - never commit actual financial files
+samples/raw-invoices/*.pdf
+samples/raw-invoices/*.png
+samples/raw-invoices/*.jpg
+samples/raw-invoices/*.jpeg
+samples/raw-invoices/*.tiff
+samples/pm-coded-invoices/*.pdf
+
+# Keep .gitkeep files
+!**/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment and credentials
+.env
+*.credentials

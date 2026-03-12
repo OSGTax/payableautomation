@@ -353,34 +353,11 @@ async function saveAndDistribute() {
         headers: { 'Content-Type': 'application/json' },
     });
     if (distResp.ok) {
-        const result = await distResp.json();
-        const pmFiles = result.results.pm_files || {};
-        const names = Object.keys(pmFiles);
-        const routing = result.results.file_routing || {};
-        const emails = result.results.email_notifications || {};
-
-        const pmLinks = result.results.pm_links || {};
-
-        let msg = 'Distributed to PMs: ' + (names.length ? names.join(', ') : 'none') +
-              '\nOverhead: ' + (result.results.overhead_count || 0) + ' invoices';
-
-        // PM coding links
-        msg += '\n\nCoding links:';
-        for (const [pm, token] of Object.entries(pmLinks)) {
-            msg += `\n  ${pm}: ${window.location.origin}/code/${token}`;
-        }
-
-        // Email status
-        for (const [pm, e] of Object.entries(emails)) {
-            msg += e.sent
-                ? `\n  ${pm}: email sent to ${e.to}`
-                : `\n  ${pm}: email not sent - ${e.reason}`;
-        }
-
-        alert(msg);
+        // Redirect to Collect & Export page where assignments are listed
         window.location.href = '/collect';
     } else {
-        alert('Error distributing.');
+        const err = await distResp.text();
+        alert('Error distributing: ' + err);
     }
 }
 

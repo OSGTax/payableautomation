@@ -22,6 +22,12 @@ project_managers:
       - "25-010"  # GRASSY GROVE SOLAR EAST
       - "25-011"  # SAWMILL BAY SOLAR
 
+  andy:
+    name: "Andy"
+    email: ""           # e.g. andy@yourcompany.com
+    onedrive_folder: ""
+    jobs: []            # Add Andy's job numbers here
+
 # Email settings for notifications
 email:
   enabled: false        # Set to true once configured

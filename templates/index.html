@@ -1,13 +1,49 @@
 {% extends "base.html" %}
 {% block title %}Dashboard - Payable Automation{% endblock %}
 
+{% block extra_styles %}
+.upload-zone {
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    padding: 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+}
+.upload-zone:hover, .upload-zone.dragover {
+    border-color: #3498db;
+    background: #eaf4fd;
+}
+.upload-zone p { color: #666; margin-bottom: 12px; }
+.upload-zone .hint { font-size: 12px; color: #999; }
+.file-list {
+    margin-top: 12px;
+    text-align: left;
+    padding: 0;
+}
+.file-list li {
+    padding: 4px 0;
+    font-size: 13px;
+    color: #2c3e50;
+    list-style: none;
+}
+{% endblock %}
+
 {% block content %}
 <div class="card">
     <h2>Upload Invoices</h2>
-    <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data"
-          style="display: flex; align-items: center; gap: 12px;">
-        <input type="file" name="file" accept=".pdf" required>
-        <button type="submit" class="btn btn-primary">Upload & Split</button>
+    <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data" id="uploadForm">
+        <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+            <p>Drop PDF files here or click to browse</p>
+            <p class="hint">Multiple files will be combined into one batch</p>
+            <input type="file" name="file" id="fileInput" accept=".pdf" multiple
+                   style="display:none" onchange="onFilesSelected(this.files)">
+            <ul class="file-list" id="fileList"></ul>
+        </div>
+        <div style="margin-top: 12px; display: flex; align-items: center; gap: 12px;">
+            <button type="submit" class="btn btn-primary" id="uploadBtn" disabled>Upload & Split</button>
+            <span id="fileCount" style="font-size: 13px; color: #666;"></span>
+        </div>
     </form>
 </div>
 
@@ -70,4 +106,43 @@
     </div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const fileList = document.getElementById('fileList');
+const fileCount = document.getElementById('fileCount');
+const uploadBtn = document.getElementById('uploadBtn');
+
+function onFilesSelected(files) {
+    fileList.innerHTML = '';
+    let count = 0;
+    for (const f of files) {
+        if (f.name.toLowerCase().endsWith('.pdf')) {
+            const li = document.createElement('li');
+            li.textContent = f.name;
+            fileList.appendChild(li);
+            count++;
+        }
+    }
+    fileCount.textContent = count > 0 ? count + ' file(s) selected' : '';
+    uploadBtn.disabled = count === 0;
+}
+
+dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+});
+dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('dragover');
+});
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    fileInput.files = e.dataTransfer.files;
+    onFilesSelected(e.dataTransfer.files);
+});
+</script>
 {% endblock %}

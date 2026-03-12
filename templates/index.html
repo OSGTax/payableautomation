@@ -70,6 +70,8 @@
                 <td>
                     <a href="{{ url_for('prescreen', batch_id=batch.batch_id) }}"
                        class="btn btn-primary btn-sm">Review</a>
+                    <button class="btn btn-sm" style="background:#e74c3c;color:white;margin-left:4px;"
+                            onclick="deleteBatch('{{ batch.batch_id }}')">Delete</button>
                 </td>
             </tr>
             {% endfor %}
@@ -110,6 +112,16 @@
 
 {% block scripts %}
 <script>
+async function deleteBatch(batchId) {
+    if (!confirm('Delete batch ' + batchId + '? This will also remove all associated assignments and PM files.')) return;
+    const resp = await fetch('/api/batch/' + batchId + '/delete', { method: 'POST' });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        alert('Error deleting batch.');
+    }
+}
+
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
 const fileList = document.getElementById('fileList');

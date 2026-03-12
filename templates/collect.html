@@ -55,6 +55,8 @@
                     <td>
                         {% if a.status == 'completed' %}
                         <span class="badge badge-grouped">Completed</span>
+                        {% elif a.status == 'returned' %}
+                        <span class="badge" style="background:#e74c3c;color:white;" title="{{ a.return_reason }}">Returned</span>
                         {% elif a.status == 'in_progress' %}
                         <span class="badge badge-pending">In Progress</span>
                         {% else %}
@@ -67,6 +69,10 @@
                         <button type="button" class="btn btn-sm btn-warning"
                                 onclick="copyLink('{{ a.token }}')"
                                 title="Copy coding link to clipboard">Copy Link</button>
+                        <button type="button" class="btn btn-sm"
+                                style="background:#e74c3c;color:white;font-size:11px;padding:2px 8px;margin-left:2px;"
+                                onclick="deleteAssignment('{{ a.token }}')"
+                                title="Delete this assignment">Delete</button>
                     </td>
                 </tr>
                 {% endfor %}
@@ -134,6 +140,16 @@ function copyLink(token) {
         prompt('Copy this link:', url);
     });
 }
+async function deleteAssignment(token) {
+    if (!confirm('Delete this assignment? This cannot be undone.')) return;
+    const resp = await fetch('/api/assignment/' + token + '/delete', { method: 'POST' });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        alert('Error deleting assignment.');
+    }
+}
+
 async function reassignInvoice(token) {
     const select = document.getElementById('reassign-' + token);
     const newPm = select.value;

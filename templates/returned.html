@@ -1,0 +1,665 @@
+{% extends "base.html" %}
+{% block title %}Returned Invoices - Payable Automation{% endblock %}
+
+{% block extra_styles %}
+.invoice-card {
+    background: white;
+    border: 2px solid #e74c3c;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+}
+.invoice-card.flagged { border-color: #f39c12; }
+.invoice-card.coding-complete { border-color: #27ae60; }
+.invoice-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+.invoice-header h3 { font-size: 15px; color: #2c3e50; margin: 0; }
+.invoice-meta { font-size: 12px; color: #888; }
+.invoice-meta .badge { margin-left: 6px; }
+.reason-text { font-size: 13px; color: #c0392b; margin-bottom: 10px; font-style: italic; }
+.invoice-body {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    gap: 16px;
+}
+.page-viewer {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.page-viewer img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+.page-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+.page-tabs button {
+    padding: 3px 8px;
+    font-size: 11px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+}
+.page-tabs button.active { background: #3498db; color: white; border-color: #3498db; }
+.page-tabs button.coded-tab { background: #e8f5e9; border-color: #27ae60; }
+.page-tabs button.flagged-tab { background: #fff3cd; border-color: #f39c12; }
+.coding-panel { display: flex; flex-direction: column; gap: 8px; }
+.coding-row {
+    background: #f8f9fa;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    font-size: 13px;
+}
+.coding-row.complete { border-color: #27ae60; background: #f0faf3; }
+.coding-row label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #666;
+    margin-bottom: 2px;
+}
+.coding-row select, .coding-row input {
+    width: 100%;
+    padding: 6px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 13px;
+    margin-bottom: 4px;
+}
+.filter-select-wrapper {
+    position: relative;
+    width: 100%;
+    margin-bottom: 4px;
+}
+.filter-select-wrapper input.filter-input {
+    width: 100%;
+    padding: 3px 6px;
+    border: 1px solid #ddd;
+    border-radius: 4px 4px 0 0;
+    font-size: 11px;
+    margin-bottom: 0;
+    box-sizing: border-box;
+}
+.filter-select-wrapper select {
+    border-radius: 0 0 4px 4px !important;
+    margin-top: -1px;
+}
+.row-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+.row-actions span { font-size: 12px; font-weight: 600; color: #2c3e50; }
+.add-row-btn {
+    font-size: 11px;
+    color: #3498db;
+    background: none;
+    border: 1px dashed #3498db;
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.remove-row-btn {
+    font-size: 10px;
+    color: #e74c3c;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+.invoice-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+}
+.send-pm-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.send-pm-group select {
+    padding: 4px 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 12px;
+}
+.page-status-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.page-status-badge.coded { background: #e8f5e9; color: #27ae60; }
+.page-status-badge.incomplete { background: #fff3cd; color: #856404; }
+.page-status-badge.empty { background: #f8f9fa; color: #999; }
+.export-bar {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.export-bar .info { font-size: 14px; color: #666; }
+{% endblock %}
+
+{% block content %}
+{% if assignments %}
+<div class="export-bar">
+    <strong>Returned / Flagged Invoices ({{ assignments | length }})</strong>
+    <span class="info">Code invoices below, then mark complete or send to a PM.</span>
+    <form action="{{ url_for('export_view') }}" method="post" style="margin-left:auto;">
+        <input type="hidden" name="type" value="browser">
+        {% for a in assignments %}
+        <input type="hidden" name="tokens" value="{{ a.token }}" class="export-token">
+        {% endfor %}
+        <button type="submit" class="btn btn-success">Export All Completed to XML</button>
+    </form>
+</div>
+
+{% for a in assignments %}
+<div class="invoice-card {% if a.flagged_pages %}flagged{% endif %}" id="inv-{{ a.token }}" data-token="{{ a.token }}">
+    <div class="invoice-header">
+        <h3>
+            {{ a.pm_name }}
+            {% if a.redirected_from %} <span style="font-size:12px;color:#888;">(from {{ a.redirected_from }})</span>{% endif %}
+            &mdash; Batch <code>{{ a.batch_id }}</code>
+        </h3>
+        <div class="invoice-meta">
+            {% if a.status == 'returned' %}
+            <span class="badge" style="background:#e74c3c;color:white;">Returned</span>
+            {% endif %}
+            {% if a.flagged_pages %}
+            <span class="badge badge-overhead" title="Pages: {{ a.flagged_pages | join(', ') }}">
+                {{ a.flagged_pages | length }} flagged
+            </span>
+            {% endif %}
+            <span id="coded-info-{{ a.token }}" style="font-size:12px;color:#666;margin-left:8px;">
+                {{ a.coded_count }} / {{ a.num_pages }} pages coded
+            </span>
+        </div>
+    </div>
+
+    {% if a.return_reason %}
+    <div class="reason-text">Reason: {{ a.return_reason }}</div>
+    {% endif %}
+
+    <!-- Page tabs -->
+    <div class="page-tabs" id="tabs-{{ a.token }}">
+        {% for i in range(a.num_pages) %}
+        <button onclick="showPage('{{ a.token }}', {{ i + 1 }})" id="tab-{{ a.token }}-{{ i + 1 }}"
+                class="{% if a.flagged_pages and (i+1) in a.flagged_pages %}flagged-tab{% endif %}">
+            {{ i + 1 }}
+        </button>
+        {% endfor %}
+    </div>
+
+    <div class="invoice-body">
+        <!-- Page image viewer -->
+        <div class="page-viewer" id="viewer-{{ a.token }}">
+            {% if a.num_pages > 0 %}
+            <img id="img-{{ a.token }}" src="{{ url_for('pm_page_image', token=a.token, page_num=1) }}"
+                 alt="Invoice page">
+            {% else %}
+            <p style="padding:20px;color:#999;">No pages available</p>
+            {% endif %}
+        </div>
+
+        <!-- Coding panel for current page -->
+        <div class="coding-panel">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <strong id="page-label-{{ a.token }}">Page 1 of {{ a.num_pages }}</strong>
+                <span class="page-status-badge empty" id="page-status-{{ a.token }}">Not coded</span>
+            </div>
+            <div id="coding-rows-{{ a.token }}">
+                <!-- Coding rows inserted by JS -->
+            </div>
+            <button class="add-row-btn" onclick="addRow('{{ a.token }}')">+ Add Line</button>
+        </div>
+    </div>
+
+    <div class="invoice-actions">
+        <button class="btn btn-sm btn-primary" onclick="saveReturned('{{ a.token }}')">Save Progress</button>
+        <button class="btn btn-sm btn-success" onclick="markComplete('{{ a.token }}')">Mark Complete</button>
+        <button class="btn btn-sm" style="background:#e74c3c;color:white;" onclick="deleteReturned('{{ a.token }}')">Delete</button>
+        <div class="send-pm-group" style="margin-left:auto;">
+            <select id="send-pm-{{ a.token }}">
+                <option value="">Send to PM...</option>
+                {% for pm in pm_list %}
+                <option value="{{ pm.name }}">{{ pm.name }}</option>
+                {% endfor %}
+            </select>
+            <button class="btn btn-sm btn-warning" onclick="sendToPm('{{ a.token }}')">Send</button>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+{% else %}
+<div class="card">
+    <h2>Returned Invoices</h2>
+    <p style="color: #999;">No returned or flagged invoices. When PMs return invoices, they'll appear here for you to review and code.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const pmList = {{ pm_list | tojson }};
+const jobList = {{ job_list | tojson }};
+const phaseMap = {{ phase_map | tojson }};
+const costMap = {{ cost_map | tojson }};
+
+// Per-invoice state
+const invoiceState = {};
+
+{% for a in assignments %}
+invoiceState['{{ a.token }}'] = {
+    numPages: {{ a.num_pages }},
+    currentPage: 1,
+    codings: {{ a.codings | tojson }},
+    pageAmounts: {{ a.page_amounts | tojson }},
+    rowCounters: {},
+};
+{% endfor %}
+
+function buildJobOpts(selected) {
+    let html = '<option value="">-- Select Job --</option>';
+    jobList.forEach(j => {
+        html += `<option value="${j}" ${j === selected ? 'selected' : ''}>${j}</option>`;
+    });
+    if (selected && !jobList.includes(selected)) {
+        html += `<option value="${selected}" selected>${selected}</option>`;
+    }
+    return html;
+}
+
+function showPage(token, pageNum) {
+    const state = invoiceState[token];
+    // Save current page codings before switching
+    savePageToState(token);
+    state.currentPage = pageNum;
+
+    // Update image
+    document.getElementById(`img-${token}`).src = `/code/${token}/page/${pageNum}`;
+    document.getElementById(`page-label-${token}`).textContent = `Page ${pageNum} of ${state.numPages}`;
+
+    // Update tab active state
+    document.querySelectorAll(`#tabs-${token} button`).forEach(b => b.classList.remove('active'));
+    const tab = document.getElementById(`tab-${token}-${pageNum}`);
+    if (tab) tab.classList.add('active');
+
+    // Render coding rows for this page
+    renderPageCoding(token, pageNum);
+}
+
+function renderPageCoding(token, pageNum) {
+    const state = invoiceState[token];
+    const container = document.getElementById(`coding-rows-${token}`);
+    container.innerHTML = '';
+    state.rowCounters[pageNum] = 0;
+
+    const saved = state.codings[pageNum] || state.codings[String(pageNum)];
+    if (saved && saved.length > 0) {
+        saved.forEach(coding => addRow(token, coding));
+    } else {
+        // Auto-fill amount from extraction
+        const amt = state.pageAmounts[pageNum] || state.pageAmounts[String(pageNum)] || '';
+        addRow(token, { job: '', phase: '', cost: '', amount: amt });
+    }
+    updatePageStatus(token);
+}
+
+function addRow(token, prefill) {
+    const state = invoiceState[token];
+    const pageNum = state.currentPage;
+    if (!state.rowCounters[pageNum]) state.rowCounters[pageNum] = 0;
+    const rowIdx = state.rowCounters[pageNum]++;
+    const container = document.getElementById(`coding-rows-${token}`);
+
+    const jobVal = (prefill && prefill.job) || '';
+    const phaseVal = (prefill && prefill.phase) || '';
+    const costVal = (prefill && prefill.cost) || '';
+    const amountVal = (prefill && prefill.amount) || '';
+
+    const row = document.createElement('div');
+    row.className = 'coding-row';
+    row.id = `row-${token}-${rowIdx}`;
+    row.innerHTML = `
+        <div class="row-actions">
+            <span>Line ${rowIdx + 1}</span>
+            <button class="remove-row-btn" onclick="removeRow('${token}', ${rowIdx})">Remove</button>
+        </div>
+        <label>Job</label>
+        <div class="filter-select-wrapper">
+            <input type="text" class="filter-input" id="jf-${token}-${rowIdx}"
+                   placeholder="Filter jobs..." oninput="filterJobs('${token}', ${rowIdx})">
+            <select id="job-${token}-${rowIdx}" onchange="onJobChg('${token}', ${rowIdx})">
+                ${buildJobOpts(jobVal)}
+            </select>
+        </div>
+        <label>Phase</label>
+        <div class="filter-select-wrapper">
+            <input type="text" class="filter-input" id="pf-${token}-${rowIdx}"
+                   placeholder="Filter phases..." oninput="filterPhases('${token}', ${rowIdx})">
+            <select id="phase-${token}-${rowIdx}" onchange="onPhaseChg('${token}', ${rowIdx})">
+                <option value="">-- Select Phase --</option>
+            </select>
+        </div>
+        <label>Cost Code</label>
+        <div class="filter-select-wrapper">
+            <input type="text" class="filter-input" id="cf-${token}-${rowIdx}"
+                   placeholder="Filter costs..." oninput="filterCosts('${token}', ${rowIdx})">
+            <select id="cost-${token}-${rowIdx}" onchange="updatePageStatus('${token}')">
+                <option value="">-- Select Cost Code --</option>
+            </select>
+        </div>
+        <label>Amount</label>
+        <input type="text" id="amt-${token}-${rowIdx}" placeholder="$0.00" value="${amountVal}">
+    `;
+    container.appendChild(row);
+
+    if (jobVal) {
+        populatePhases(token, rowIdx, jobVal, phaseVal);
+        if (phaseVal) populateCosts(token, rowIdx, jobVal, phaseVal, costVal);
+    }
+    updatePageStatus(token);
+}
+
+function removeRow(token, rowIdx) {
+    const el = document.getElementById(`row-${token}-${rowIdx}`);
+    if (el) el.remove();
+    updatePageStatus(token);
+}
+
+function filterJobs(token, rowIdx) {
+    const filter = document.getElementById(`jf-${token}-${rowIdx}`).value.toLowerCase();
+    const select = document.getElementById(`job-${token}-${rowIdx}`);
+    const cur = select.value;
+    select.innerHTML = '<option value="">-- Select Job --</option>';
+    jobList.forEach(j => {
+        if (!filter || j.toLowerCase().includes(filter)) {
+            const opt = document.createElement('option');
+            opt.value = j; opt.textContent = j;
+            if (j === cur) opt.selected = true;
+            select.appendChild(opt);
+        }
+    });
+}
+
+function filterPhases(token, rowIdx) {
+    const filter = document.getElementById(`pf-${token}-${rowIdx}`).value.toLowerCase();
+    const jobVal = document.getElementById(`job-${token}-${rowIdx}`).value;
+    const select = document.getElementById(`phase-${token}-${rowIdx}`);
+    const cur = select.value;
+    const phases = phaseMap[jobVal] || [];
+    select.innerHTML = '<option value="">-- Select Phase --</option>';
+    phases.forEach(p => {
+        if (!filter || p.toLowerCase().includes(filter)) {
+            const opt = document.createElement('option');
+            opt.value = p; opt.textContent = p;
+            if (p === cur) opt.selected = true;
+            select.appendChild(opt);
+        }
+    });
+}
+
+function filterCosts(token, rowIdx) {
+    const filter = document.getElementById(`cf-${token}-${rowIdx}`).value.toLowerCase();
+    const jobVal = document.getElementById(`job-${token}-${rowIdx}`).value;
+    const phaseVal = document.getElementById(`phase-${token}-${rowIdx}`).value;
+    const select = document.getElementById(`cost-${token}-${rowIdx}`);
+    const cur = select.value;
+    const costs = costMap[`${jobVal}||${phaseVal}`] || [];
+    select.innerHTML = '<option value="">-- Select Cost Code --</option>';
+    costs.forEach(c => {
+        if (!filter || c.toLowerCase().includes(filter)) {
+            const opt = document.createElement('option');
+            opt.value = c; opt.textContent = c;
+            if (c === cur) opt.selected = true;
+            select.appendChild(opt);
+        }
+    });
+}
+
+function onJobChg(token, rowIdx) {
+    const jobVal = document.getElementById(`job-${token}-${rowIdx}`).value;
+    populatePhases(token, rowIdx, jobVal);
+    document.getElementById(`cost-${token}-${rowIdx}`).innerHTML = '<option value="">-- Select Cost Code --</option>';
+    updatePageStatus(token);
+}
+
+function onPhaseChg(token, rowIdx) {
+    const jobVal = document.getElementById(`job-${token}-${rowIdx}`).value;
+    const phaseVal = document.getElementById(`phase-${token}-${rowIdx}`).value;
+    populateCosts(token, rowIdx, jobVal, phaseVal);
+    updatePageStatus(token);
+}
+
+function populatePhases(token, rowIdx, jobVal, selected) {
+    const sel = document.getElementById(`phase-${token}-${rowIdx}`);
+    sel.innerHTML = '<option value="">-- Select Phase --</option>';
+    (phaseMap[jobVal] || []).forEach(p => {
+        const o = document.createElement('option');
+        o.value = p; o.textContent = p;
+        if (p === selected) o.selected = true;
+        sel.appendChild(o);
+    });
+}
+
+function populateCosts(token, rowIdx, jobVal, phaseVal, selected) {
+    const sel = document.getElementById(`cost-${token}-${rowIdx}`);
+    sel.innerHTML = '<option value="">-- Select Cost Code --</option>';
+    (costMap[`${jobVal}||${phaseVal}`] || []).forEach(c => {
+        const o = document.createElement('option');
+        o.value = c; o.textContent = c;
+        if (c === selected) o.selected = true;
+        sel.appendChild(o);
+    });
+}
+
+function collectPageRows(token) {
+    const rows = [];
+    const container = document.getElementById(`coding-rows-${token}`);
+    if (!container) return rows;
+    container.querySelectorAll('.coding-row').forEach(row => {
+        const selects = row.querySelectorAll('select');
+        const amtInput = row.querySelector('input[id^="amt-"]');
+        if (selects.length >= 3) {
+            rows.push({
+                job: selects[0].value,
+                phase: selects[1].value,
+                cost: selects[2].value,
+                amount: amtInput ? amtInput.value : '',
+            });
+        }
+    });
+    return rows;
+}
+
+function savePageToState(token) {
+    const state = invoiceState[token];
+    const rows = collectPageRows(token);
+    state.codings[state.currentPage] = rows;
+    state.codings[String(state.currentPage)] = rows;
+}
+
+function collectAllCodings(token) {
+    // Save current page first
+    savePageToState(token);
+    return invoiceState[token].codings;
+}
+
+function updatePageStatus(token) {
+    const rows = collectPageRows(token);
+    const state = invoiceState[token];
+    const pageNum = state.currentPage;
+    const badge = document.getElementById(`page-status-${token}`);
+
+    // Determine page status
+    const hasAny = rows.some(r => r.job);
+    const allComplete = rows.length > 0 && rows.every(r => !r.job || (r.job && r.phase && r.cost));
+
+    if (hasAny && allComplete) {
+        badge.className = 'page-status-badge coded';
+        badge.textContent = 'Coded';
+    } else if (hasAny) {
+        badge.className = 'page-status-badge incomplete';
+        badge.textContent = 'Incomplete';
+    } else {
+        badge.className = 'page-status-badge empty';
+        badge.textContent = 'Not coded';
+    }
+
+    // Update row styling
+    const container = document.getElementById(`coding-rows-${token}`);
+    container.querySelectorAll('.coding-row').forEach(rowEl => {
+        const sels = rowEl.querySelectorAll('select');
+        if (sels.length >= 3 && sels[0].value && sels[1].value && sels[2].value) {
+            rowEl.classList.add('complete');
+        } else {
+            rowEl.classList.remove('complete');
+        }
+    });
+
+    // Save to state and update tab + overall count
+    savePageToState(token);
+    updateTabsAndCount(token);
+}
+
+function updateTabsAndCount(token) {
+    const state = invoiceState[token];
+    let coded = 0;
+    for (let p = 1; p <= state.numPages; p++) {
+        const rows = state.codings[p] || state.codings[String(p)] || [];
+        const hasAny = rows.some(r => r.job);
+        const allComplete = rows.length > 0 && rows.every(r => !r.job || (r.job && r.phase && r.cost));
+        const tab = document.getElementById(`tab-${token}-${p}`);
+        if (tab) {
+            tab.classList.remove('coded-tab', 'flagged-tab');
+            if (hasAny && allComplete) {
+                tab.classList.add('coded-tab');
+                coded++;
+            } else if (hasAny) {
+                tab.classList.add('flagged-tab');
+            }
+        }
+    }
+    const info = document.getElementById(`coded-info-${token}`);
+    if (info) info.textContent = `${coded} / ${state.numPages} pages coded`;
+
+    // Update card border
+    const card = document.getElementById(`inv-${token}`);
+    card.classList.remove('coding-complete');
+    if (coded === state.numPages && state.numPages > 0) {
+        card.classList.add('coding-complete');
+    }
+}
+
+async function saveReturned(token) {
+    const codings = collectAllCodings(token);
+    const resp = await fetch(`/api/returned/${token}/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codings }),
+    });
+    if (resp.ok) {
+        alert('Progress saved.');
+    } else {
+        alert('Error saving.');
+    }
+}
+
+async function markComplete(token) {
+    const codings = collectAllCodings(token);
+    const state = invoiceState[token];
+
+    // Check for incomplete pages
+    let incomplete = [];
+    for (let p = 1; p <= state.numPages; p++) {
+        const rows = codings[p] || codings[String(p)] || [];
+        const hasStarted = rows.some(r => r.job);
+        if (hasStarted) {
+            const allDone = rows.every(r => !r.job || (r.job && r.phase && r.cost));
+            if (!allDone) incomplete.push(p);
+        }
+    }
+
+    if (incomplete.length > 0) {
+        if (!confirm(`Pages ${incomplete.join(', ')} are incomplete. Mark complete anyway?`)) return;
+    }
+
+    const resp = await fetch(`/api/returned/${token}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codings }),
+    });
+    if (resp.ok) {
+        const result = await resp.json();
+        alert(result.message);
+        location.reload();
+    } else {
+        alert('Error marking complete.');
+    }
+}
+
+async function sendToPm(token) {
+    const select = document.getElementById(`send-pm-${token}`);
+    const pm = select.value;
+    if (!pm) { alert('Select a PM first.'); return; }
+    if (!confirm(`Send this invoice to ${pm}?`)) return;
+
+    const codings = collectAllCodings(token);
+    const resp = await fetch(`/api/returned/${token}/send-to-pm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pm_name: pm, codings }),
+    });
+    if (resp.ok) {
+        const result = await resp.json();
+        alert(result.message);
+        location.reload();
+    } else {
+        alert('Error sending to PM.');
+    }
+}
+
+async function deleteReturned(token) {
+    if (!confirm('Delete this returned invoice? This cannot be undone.')) return;
+    const resp = await fetch(`/api/assignment/${token}/delete`, { method: 'POST' });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        alert('Error deleting.');
+    }
+}
+
+// Initialize: show page 1 for each invoice
+window.addEventListener('DOMContentLoaded', () => {
+    Object.keys(invoiceState).forEach(token => {
+        showPage(token, 1);
+    });
+});
+</script>
+{% endblock %}

@@ -378,18 +378,172 @@ def submit_pm_coding(token):
     return jsonify({"status": "ok", "message": msg})
 
 
+@app.route("/returned")
+def returned_view():
+    """View returned/flagged invoices for controller to review and code."""
+    config = load_pm_assignments()
+    job_codes = load_job_codes()
+    pm_list = [{"key": k, "name": v["name"]} for k, v in config["project_managers"].items()]
+
+    # Build cascading dropdown data
+    job_list = sorted(job_codes.keys())
+    phase_map = {}
+    cost_map = {}
+    for job_full, job_data in job_codes.items():
+        phases = sorted(job_data["phases"].keys())
+        phase_map[job_full] = phases
+        for phase, costs in job_data["phases"].items():
+            cost_map[f"{job_full}||{phase}"] = sorted(costs)
+
+    # Load returned/flagged assignments
+    assignments = []
+    if ASSIGNMENTS_DIR.exists():
+        for f in sorted(ASSIGNMENTS_DIR.glob("*.json")):
+            with open(f) as fh:
+                a = json.load(fh)
+                if a.get("status") in ("returned",) or a.get("flagged_pages"):
+                    # Count coded pages
+                    coded_count = sum(
+                        1 for codings in a.get("codings", {}).values()
+                        if codings and all(
+                            c.get("job") and c.get("phase") and c.get("cost")
+                            for c in codings
+                        )
+                    )
+                    a["coded_count"] = coded_count
+                    a["flagged_pages"] = a.get("flagged_pages", [])
+                    a["return_reason"] = a.get("return_reason", "")
+                    a["redirected_from"] = a.get("redirected_from", "")
+
+                    # Get page count from PDF
+                    try:
+                        from pypdf import PdfReader
+                        pdf_path = Path(a["pdf_file"])
+                        a["num_pages"] = len(PdfReader(pdf_path).pages) if pdf_path.exists() else 0
+                    except Exception:
+                        a["num_pages"] = 0
+
+                    # Load extracted amounts from batch manifest
+                    page_amounts = {}
+                    try:
+                        batch_manifest = load_batch(a["batch_id"])
+                        for page in batch_manifest["pages"]:
+                            if page.get("extracted_amount"):
+                                page_amounts[page["page_num"]] = page["extracted_amount"]
+                    except Exception:
+                        pass
+                    a["page_amounts"] = page_amounts
+
+                    assignments.append(a)
+
+    return render_template(
+        "returned.html",
+        assignments=assignments,
+        pm_list=pm_list,
+        job_list=job_list,
+        phase_map=phase_map,
+        cost_map=cost_map,
+    )
+
+
+@app.route("/api/returned/<token>/save", methods=["POST"])
+def save_returned_coding(token):
+    """Controller saves coding on a returned invoice."""
+    assignment_path = ASSIGNMENTS_DIR / f"{token}.json"
+    if not assignment_path.exists():
+        return jsonify({"error": "Invalid token"}), 404
+
+    data = request.get_json()
+
+    with open(assignment_path) as f:
+        assignment = json.load(f)
+
+    assignment["codings"] = data.get("codings", {})
+    # Keep status as returned while editing
+    with open(assignment_path, "w") as f:
+        json.dump(assignment, f, indent=2)
+
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/returned/<token>/complete", methods=["POST"])
+def complete_returned_coding(token):
+    """Controller marks a returned invoice as fully coded and ready for export."""
+    assignment_path = ASSIGNMENTS_DIR / f"{token}.json"
+    if not assignment_path.exists():
+        return jsonify({"error": "Invalid token"}), 404
+
+    data = request.get_json()
+
+    with open(assignment_path) as f:
+        assignment = json.load(f)
+
+    assignment["codings"] = data.get("codings", {})
+    assignment["status"] = "completed"
+    assignment["flagged_pages"] = []  # Clear flags since controller reviewed
+    assignment["return_reason"] = ""
+
+    with open(assignment_path, "w") as f:
+        json.dump(assignment, f, indent=2)
+
+    return jsonify({"status": "ok", "message": "Invoice marked as completed and ready for export."})
+
+
+@app.route("/api/returned/<token>/send-to-pm", methods=["POST"])
+def send_returned_to_pm(token):
+    """Controller sends a returned invoice to a specific PM."""
+    assignment_path = ASSIGNMENTS_DIR / f"{token}.json"
+    if not assignment_path.exists():
+        return jsonify({"error": "Invalid token"}), 404
+
+    data = request.get_json()
+    target_pm = data.get("pm_name", "")
+    if not target_pm:
+        return jsonify({"error": "No PM specified"}), 400
+
+    with open(assignment_path) as f:
+        assignment = json.load(f)
+
+    assignment["codings"] = data.get("codings", assignment.get("codings", {}))
+    assignment["pm_name"] = target_pm
+    assignment["status"] = "pending"
+    assignment["flagged_pages"] = []
+    assignment["return_reason"] = ""
+
+    # Move PDF to new PM's outbox
+    old_pdf = Path(assignment["pdf_file"])
+    if old_pdf.exists():
+        from .prepare import PM_OUTBOX_DIR
+        new_pm_dir = PM_OUTBOX_DIR / target_pm
+        new_pm_dir.mkdir(parents=True, exist_ok=True)
+        new_pdf = new_pm_dir / old_pdf.name
+        if str(old_pdf) != str(new_pdf):
+            shutil.move(str(old_pdf), str(new_pdf))
+            assignment["pdf_file"] = str(new_pdf)
+
+    with open(assignment_path, "w") as f:
+        json.dump(assignment, f, indent=2)
+
+    return jsonify({"status": "ok", "message": f"Sent to {target_pm}."})
+
+
 @app.route("/collect")
 def collect_view():
     """View coded invoices from PMs (browser-submitted + PDF inbox)."""
     config = load_pm_assignments()
     pm_list = [{"key": k, "name": v["name"]} for k, v in config["project_managers"].items()]
 
-    # Browser-submitted assignments
+    # Browser-submitted assignments (exclude returned/flagged — those go to /returned)
     assignments = []
+    returned_count = 0
     if ASSIGNMENTS_DIR.exists():
         for f in sorted(ASSIGNMENTS_DIR.glob("*.json")):
             with open(f) as fh:
                 a = json.load(fh)
+                # Skip returned/flagged invoices (they have their own page)
+                if a.get("status") == "returned" or a.get("flagged_pages"):
+                    returned_count += 1
+                    continue
                 # Count pages where all rows have job+phase+cost
                 coded_count = sum(
                     1 for codings in a.get("codings", {}).values()
@@ -407,7 +561,8 @@ def collect_view():
     pdf_results = scan_pm_inbox() if (DATA_DIR / "pm-inbox").exists() else []
 
     return render_template("collect.html", assignments=assignments,
-                           pdf_results=pdf_results, pm_list=pm_list)
+                           pdf_results=pdf_results, pm_list=pm_list,
+                           returned_count=returned_count)
 
 
 @app.route("/api/reassign/<token>", methods=["POST"])

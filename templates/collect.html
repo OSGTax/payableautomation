@@ -2,6 +2,13 @@
 {% block title %}Collect & Export - Payable Automation{% endblock %}
 
 {% block content %}
+{% if returned_count %}
+<div class="card" style="border-left: 4px solid #e74c3c;">
+    <strong style="color:#e74c3c;">{{ returned_count }} returned/flagged invoice(s)</strong> need your review.
+    <a href="{{ url_for('returned_view') }}" class="btn btn-sm btn-warning" style="margin-left:12px;">Review Returned Invoices</a>
+</div>
+{% endif %}
+
 <div class="card">
     <h2>PM Coding Status</h2>
     {% if assignments %}

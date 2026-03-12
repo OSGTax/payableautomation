@@ -526,9 +526,9 @@ def return_to_controller(token):
     # If redirecting to another PM
     redirect_pm = data.get("redirect_pm")
     if redirect_pm:
+        assignment["redirected_from"] = assignment.get("pm_name", "")
         assignment["pm_name"] = redirect_pm
         assignment["status"] = "pending"
-        assignment["redirected_from"] = assignment.get("pm_name", "")
 
     with open(assignment_path, "w") as f:
         json.dump(assignment, f, indent=2)

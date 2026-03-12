@@ -100,8 +100,9 @@
     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
     margin-bottom: 16px;
+    flex-wrap: wrap;
 }
 .toolbar .info { font-size: 14px; color: #666; }
 .progress-bar {
@@ -110,6 +111,7 @@
     background: #e0e0e0;
     border-radius: 3px;
     overflow: hidden;
+    min-width: 100px;
 }
 .progress-fill {
     height: 100%;
@@ -140,6 +142,79 @@
 .page-nav button.active { background: #3498db; color: white; border-color: #3498db; }
 .page-nav button.coded-nav { background: #e8f5e9; border-color: #27ae60; }
 .page-nav button.incomplete-nav { background: #fff3cd; border-color: #f39c12; }
+/* Filterable dropdown wrapper */
+.filter-select-wrapper {
+    position: relative;
+    width: 100%;
+    margin-bottom: 6px;
+}
+.filter-select-wrapper input.filter-input {
+    width: 100%;
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px 4px 0 0;
+    font-size: 12px;
+    margin-bottom: 0;
+    box-sizing: border-box;
+}
+.filter-select-wrapper input.filter-input:focus {
+    border-color: #3498db;
+    outline: none;
+}
+.filter-select-wrapper select {
+    border-radius: 0 0 4px 4px !important;
+    margin-top: -1px;
+}
+.same-prev-btn {
+    font-size: 11px;
+    color: #8e44ad;
+    background: #f5eef8;
+    border: 1px solid #d5b8e8;
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-left: 4px;
+}
+.same-prev-btn:hover { background: #e8d5f5; }
+.toolbar-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.btn-return {
+    background: #e67e22;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+}
+.btn-return:hover { background: #d35400; }
+.redirect-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.redirect-group select {
+    padding: 4px 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 13px;
+}
+.job-filter-toggle {
+    font-size: 11px;
+    color: #666;
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+    padding: 2px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-left: 4px;
+}
+.job-filter-toggle.active { background: #3498db; color: white; border-color: #3498db; }
 {% endblock %}
 
 {% block content %}
@@ -149,8 +224,22 @@
     <div class="progress-bar">
         <div class="progress-fill" id="progressFill" style="width: 0%"></div>
     </div>
-    <button class="btn btn-primary" onclick="saveProgress()">Save Progress</button>
-    <button class="btn btn-success" onclick="submitToController()">Send to Controller</button>
+    <div class="toolbar-actions">
+        <button class="btn btn-primary" onclick="saveProgress()">Save Progress</button>
+        <button class="btn btn-success" onclick="submitToController()">Send to Controller</button>
+        <button class="btn-return" onclick="returnToController()">Return to Controller</button>
+        <div class="redirect-group">
+            <select id="redirectPmSelect">
+                <option value="">Redirect to...</option>
+                {% for pm in pm_list %}
+                {% if pm.name != assignment.pm_name %}
+                <option value="{{ pm.name }}">{{ pm.name }}</option>
+                {% endif %}
+                {% endfor %}
+            </select>
+            <button class="btn btn-sm btn-primary" onclick="redirectToPm()" style="padding:4px 10px;">Go</button>
+        </div>
+    </div>
 </div>
 
 <div class="page-nav" id="pageNav">
@@ -167,7 +256,11 @@
     </div>
     <div class="coding-panel">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h3>Page {{ page_idx + 1 }} of {{ num_pages }}</h3>
+            <h3>Page {{ page_idx + 1 }} of {{ num_pages }}
+                {% if page_idx > 0 %}
+                <button class="same-prev-btn" onclick="copyFromPrevious({{ page_idx + 1 }})">Same as previous</button>
+                {% endif %}
+            </h3>
             <span class="page-status empty" id="status-{{ page_idx + 1 }}">Not coded</span>
         </div>
 
@@ -197,13 +290,39 @@ const phaseMap = {{ phase_map | tojson }};
 const costMap = {{ cost_map | tojson }};
 const jobList = {{ job_list | tojson }};
 
+// PM's assigned jobs (pre-filtered subset)
+const pmJobList = {{ pm_job_list | tojson }};
+
+// Suggested jobs per page from intake
+const pageSuggestions = {{ page_suggestions | tojson }};
+
 // Extracted amounts from invoice text
 const pageAmounts = {{ page_amounts | tojson }};
 
 // Existing codings from saved progress
 const existingCodings = {{ assignment.codings | tojson }};
 
+// Whether to show only PM jobs by default
+let showOnlyPmJobs = pmJobList.length > 0;
+
 let rowCounters = {};
+
+function getFilteredJobList() {
+    return showOnlyPmJobs ? pmJobList : jobList;
+}
+
+function buildJobOptions(selectedJob) {
+    const jobs = getFilteredJobList();
+    let html = '<option value="">-- Select Job --</option>';
+    jobs.forEach(j => {
+        html += `<option value="${j}" ${j === selectedJob ? 'selected' : ''}>${j}</option>`;
+    });
+    // If selected job is not in filtered list, add it anyway
+    if (selectedJob && !jobs.includes(selectedJob)) {
+        html += `<option value="${selectedJob}" selected>${selectedJob}</option>`;
+    }
+    return html;
+}
 
 function addCodingRow(pageNum, prefill) {
     if (!rowCounters[pageNum]) rowCounters[pageNum] = 0;
@@ -214,9 +333,20 @@ function addCodingRow(pageNum, prefill) {
     row.className = 'coding-row';
     row.id = `row-${pageNum}-${rowIdx}`;
 
-    const jobVal = (prefill && prefill.job) || '';
+    let jobVal = (prefill && prefill.job) || '';
     const phaseVal = (prefill && prefill.phase) || '';
     const costVal = (prefill && prefill.cost) || '';
+
+    // Auto-suggest job from intake if no prefill and first row
+    if (!jobVal && rowIdx === 0) {
+        const suggested = pageSuggestions[pageNum] || pageSuggestions[String(pageNum)] || '';
+        if (suggested) {
+            // Find matching full job name
+            const match = jobList.find(j => j.startsWith(suggested));
+            if (match) jobVal = match;
+        }
+    }
+
     // Auto-fill amount: use prefill, or for first row use extracted amount
     const amountVal = (prefill && prefill.amount) ||
                       (rowIdx === 0 ? (pageAmounts[pageNum] || pageAmounts[String(pageNum)] || '') : '');
@@ -224,21 +354,37 @@ function addCodingRow(pageNum, prefill) {
     row.innerHTML = `
         <div class="row-header">
             <span>Line ${rowIdx + 1}</span>
-            <button class="remove-row-btn" onclick="removeRow(${pageNum}, ${rowIdx})">Remove</button>
+            <div>
+                <button class="job-filter-toggle ${showOnlyPmJobs ? 'active' : ''}"
+                        onclick="toggleJobFilter(${pageNum}, ${rowIdx})"
+                        title="Toggle: show only my jobs vs all jobs">My Jobs</button>
+                <button class="remove-row-btn" onclick="removeRow(${pageNum}, ${rowIdx})">Remove</button>
+            </div>
         </div>
         <label>Job</label>
-        <select id="job-${pageNum}-${rowIdx}" onchange="onJobChange(${pageNum}, ${rowIdx})">
-            <option value="">-- Select Job --</option>
-            ${jobList.map(j => `<option value="${j}" ${j === jobVal ? 'selected' : ''}>${j}</option>`).join('')}
-        </select>
+        <div class="filter-select-wrapper">
+            <input type="text" class="filter-input" id="job-filter-${pageNum}-${rowIdx}"
+                   placeholder="Type to filter jobs..." oninput="filterJobDropdown(${pageNum}, ${rowIdx})">
+            <select id="job-${pageNum}-${rowIdx}" onchange="onJobChange(${pageNum}, ${rowIdx})">
+                ${buildJobOptions(jobVal)}
+            </select>
+        </div>
         <label>Phase</label>
-        <select id="phase-${pageNum}-${rowIdx}" onchange="onPhaseChange(${pageNum}, ${rowIdx})">
-            <option value="">-- Select Phase --</option>
-        </select>
+        <div class="filter-select-wrapper">
+            <input type="text" class="filter-input" id="phase-filter-${pageNum}-${rowIdx}"
+                   placeholder="Type to filter phases..." oninput="filterPhaseDropdown(${pageNum}, ${rowIdx})">
+            <select id="phase-${pageNum}-${rowIdx}" onchange="onPhaseChange(${pageNum}, ${rowIdx})">
+                <option value="">-- Select Phase --</option>
+            </select>
+        </div>
         <label>Cost Code</label>
-        <select id="cost-${pageNum}-${rowIdx}" onchange="updateProgress()">
-            <option value="">-- Select Cost Code --</option>
-        </select>
+        <div class="filter-select-wrapper">
+            <input type="text" class="filter-input" id="cost-filter-${pageNum}-${rowIdx}"
+                   placeholder="Type to filter costs..." oninput="filterCostDropdown(${pageNum}, ${rowIdx})">
+            <select id="cost-${pageNum}-${rowIdx}" onchange="updateProgress()">
+                <option value="">-- Select Cost Code --</option>
+            </select>
+        </div>
         <label>Amount</label>
         <input type="text" id="amount-${pageNum}-${rowIdx}" placeholder="$0.00"
                value="${amountVal}" onchange="updateProgress()">
@@ -264,9 +410,84 @@ function removeRow(pageNum, rowIdx) {
     updateProgress();
 }
 
+function toggleJobFilter(pageNum, rowIdx) {
+    showOnlyPmJobs = !showOnlyPmJobs;
+    // Update all toggle buttons to reflect state
+    document.querySelectorAll('.job-filter-toggle').forEach(btn => {
+        btn.classList.toggle('active', showOnlyPmJobs);
+    });
+    // Rebuild the job dropdown for this row, preserving selection
+    const jobSelect = document.getElementById(`job-${pageNum}-${rowIdx}`);
+    const currentVal = jobSelect.value;
+    jobSelect.innerHTML = buildJobOptions(currentVal);
+}
+
+function filterJobDropdown(pageNum, rowIdx) {
+    const filter = document.getElementById(`job-filter-${pageNum}-${rowIdx}`).value.toLowerCase();
+    const select = document.getElementById(`job-${pageNum}-${rowIdx}`);
+    const jobs = getFilteredJobList();
+    const currentVal = select.value;
+
+    select.innerHTML = '<option value="">-- Select Job --</option>';
+    jobs.forEach(j => {
+        if (!filter || j.toLowerCase().includes(filter)) {
+            const opt = document.createElement('option');
+            opt.value = j;
+            opt.textContent = j;
+            if (j === currentVal) opt.selected = true;
+            select.appendChild(opt);
+        }
+    });
+}
+
+function filterPhaseDropdown(pageNum, rowIdx) {
+    const filter = document.getElementById(`phase-filter-${pageNum}-${rowIdx}`).value.toLowerCase();
+    const jobVal = document.getElementById(`job-${pageNum}-${rowIdx}`).value;
+    const select = document.getElementById(`phase-${pageNum}-${rowIdx}`);
+    const currentVal = select.value;
+    const phases = phaseMap[jobVal] || [];
+
+    select.innerHTML = '<option value="">-- Select Phase --</option>';
+    phases.forEach(p => {
+        if (!filter || p.toLowerCase().includes(filter)) {
+            const opt = document.createElement('option');
+            opt.value = p;
+            opt.textContent = p;
+            if (p === currentVal) opt.selected = true;
+            select.appendChild(opt);
+        }
+    });
+}
+
+function filterCostDropdown(pageNum, rowIdx) {
+    const filter = document.getElementById(`cost-filter-${pageNum}-${rowIdx}`).value.toLowerCase();
+    const jobVal = document.getElementById(`job-${pageNum}-${rowIdx}`).value;
+    const phaseVal = document.getElementById(`phase-${pageNum}-${rowIdx}`).value;
+    const select = document.getElementById(`cost-${pageNum}-${rowIdx}`);
+    const currentVal = select.value;
+    const key = `${jobVal}||${phaseVal}`;
+    const costs = costMap[key] || [];
+
+    select.innerHTML = '<option value="">-- Select Cost Code --</option>';
+    costs.forEach(c => {
+        if (!filter || c.toLowerCase().includes(filter)) {
+            const opt = document.createElement('option');
+            opt.value = c;
+            opt.textContent = c;
+            if (c === currentVal) opt.selected = true;
+            select.appendChild(opt);
+        }
+    });
+}
+
 function onJobChange(pageNum, rowIdx) {
     const jobSelect = document.getElementById(`job-${pageNum}-${rowIdx}`);
     const jobVal = jobSelect.value;
+    // Clear filter inputs
+    const phaseFilter = document.getElementById(`phase-filter-${pageNum}-${rowIdx}`);
+    const costFilter = document.getElementById(`cost-filter-${pageNum}-${rowIdx}`);
+    if (phaseFilter) phaseFilter.value = '';
+    if (costFilter) costFilter.value = '';
     populatePhases(pageNum, rowIdx, jobVal);
     // Clear cost
     const costSelect = document.getElementById(`cost-${pageNum}-${rowIdx}`);
@@ -277,6 +498,8 @@ function onJobChange(pageNum, rowIdx) {
 function onPhaseChange(pageNum, rowIdx) {
     const jobVal = document.getElementById(`job-${pageNum}-${rowIdx}`).value;
     const phaseVal = document.getElementById(`phase-${pageNum}-${rowIdx}`).value;
+    const costFilter = document.getElementById(`cost-filter-${pageNum}-${rowIdx}`);
+    if (costFilter) costFilter.value = '';
     populateCosts(pageNum, rowIdx, jobVal, phaseVal);
     updateProgress();
 }
@@ -308,24 +531,48 @@ function populateCosts(pageNum, rowIdx, jobVal, phaseVal, selectedCost) {
     });
 }
 
+function copyFromPrevious(pageNum) {
+    if (pageNum <= 1) return;
+    const prevCodings = collectPageCodings(pageNum - 1);
+    if (!prevCodings || prevCodings.length === 0) {
+        alert('No coding data on previous page to copy.');
+        return;
+    }
+    // Clear existing rows for this page
+    const container = document.getElementById(`coding-rows-${pageNum}`);
+    container.innerHTML = '';
+    rowCounters[pageNum] = 0;
+
+    // Add rows with previous page's data
+    prevCodings.forEach(coding => {
+        addCodingRow(pageNum, coding);
+    });
+    updateProgress();
+}
+
+function collectPageCodings(pageNum) {
+    const rows = [];
+    const container = document.getElementById(`coding-rows-${pageNum}`);
+    if (!container) return rows;
+    container.querySelectorAll('.coding-row').forEach(row => {
+        const selects = row.querySelectorAll('select');
+        const input = row.querySelector('input[type="text"][id^="amount-"]');
+        if (selects.length >= 3) {
+            rows.push({
+                job: selects[0].value,
+                phase: selects[1].value,
+                cost: selects[2].value,
+                amount: input ? input.value : '',
+            });
+        }
+    });
+    return rows;
+}
+
 function collectCodings() {
     const codings = {};
     for (let page = 1; page <= numPages; page++) {
-        const rows = [];
-        const container = document.getElementById(`coding-rows-${page}`);
-        container.querySelectorAll('.coding-row').forEach(row => {
-            const selects = row.querySelectorAll('select');
-            const input = row.querySelector('input[type="text"]');
-            if (selects.length >= 3) {
-                rows.push({
-                    job: selects[0].value,
-                    phase: selects[1].value,
-                    cost: selects[2].value,
-                    amount: input ? input.value : '',
-                });
-            }
-        });
-        codings[page] = rows;
+        codings[page] = collectPageCodings(page);
     }
     return codings;
 }
@@ -406,6 +653,51 @@ async function saveProgress() {
         alert('Progress saved.');
     } else {
         alert('Error saving.');
+    }
+}
+
+async function returnToController() {
+    const reason = prompt('Reason for returning (optional):');
+    if (reason === null) return; // cancelled
+
+    const resp = await fetch(`/api/code/${token}/return`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason, codings: collectCodings() }),
+    });
+    if (resp.ok) {
+        const result = await resp.json();
+        alert(result.message);
+        window.location.reload();
+    } else {
+        alert('Error returning invoice.');
+    }
+}
+
+async function redirectToPm() {
+    const select = document.getElementById('redirectPmSelect');
+    const targetPm = select.value;
+    if (!targetPm) {
+        alert('Select a PM to redirect to.');
+        return;
+    }
+    if (!confirm(`Redirect this invoice to ${targetPm}?`)) return;
+
+    const resp = await fetch(`/api/code/${token}/return`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            redirect_pm: targetPm,
+            reason: `Redirected to ${targetPm}`,
+            codings: collectCodings(),
+        }),
+    });
+    if (resp.ok) {
+        const result = await resp.json();
+        alert(result.message);
+        window.location.reload();
+    } else {
+        alert('Error redirecting.');
     }
 }
 

@@ -13,6 +13,7 @@
     margin-bottom: 16px;
 }
 .invoice-page.coded { border-color: #27ae60; }
+.invoice-page.incomplete { border-color: #f39c12; }
 .page-image {
     border: 1px solid #ddd;
     border-radius: 4px;
@@ -33,6 +34,7 @@
     border-radius: 6px;
     border: 1px solid #e0e0e0;
 }
+.coding-row.complete { border-color: #27ae60; background: #f0faf3; }
 .coding-row label {
     display: block;
     font-size: 11px;
@@ -79,16 +81,15 @@
     cursor: pointer;
     padding: 2px 6px;
 }
-.approved-check {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px;
-    background: #e8f5e9;
+.page-status {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 8px;
     border-radius: 4px;
 }
-.approved-check input { width: 18px; height: 18px; }
-.approved-check label { font-size: 14px; font-weight: 600; color: #27ae60; margin: 0; }
+.page-status.coded { background: #e8f5e9; color: #27ae60; }
+.page-status.incomplete { background: #fff3cd; color: #856404; }
+.page-status.empty { background: #f8f9fa; color: #999; }
 .toolbar {
     position: sticky;
     top: 0;
@@ -138,6 +139,7 @@
 }
 .page-nav button.active { background: #3498db; color: white; border-color: #3498db; }
 .page-nav button.coded-nav { background: #e8f5e9; border-color: #27ae60; }
+.page-nav button.incomplete-nav { background: #fff3cd; border-color: #f39c12; }
 {% endblock %}
 
 {% block content %}
@@ -164,19 +166,16 @@
              alt="Invoice page {{ page_idx + 1 }}" loading="lazy">
     </div>
     <div class="coding-panel">
-        <h3>Page {{ page_idx + 1 }} of {{ num_pages }}</h3>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h3>Page {{ page_idx + 1 }} of {{ num_pages }}</h3>
+            <span class="page-status empty" id="status-{{ page_idx + 1 }}">Not coded</span>
+        </div>
 
         <div id="coding-rows-{{ page_idx + 1 }}">
             <!-- Coding rows inserted by JS -->
         </div>
 
         <button class="add-row-btn" onclick="addCodingRow({{ page_idx + 1 }})">+ Add Line</button>
-
-        <div class="approved-check">
-            <input type="checkbox" id="approved-{{ page_idx + 1 }}"
-                   onchange="updateProgress()">
-            <label for="approved-{{ page_idx + 1 }}">Approved</label>
-        </div>
     </div>
 </div>
 {% endfor %}
@@ -198,6 +197,9 @@ const phaseMap = {{ phase_map | tojson }};
 const costMap = {{ cost_map | tojson }};
 const jobList = {{ job_list | tojson }};
 
+// Extracted amounts from invoice text
+const pageAmounts = {{ page_amounts | tojson }};
+
 // Existing codings from saved progress
 const existingCodings = {{ assignment.codings | tojson }};
 
@@ -215,7 +217,9 @@ function addCodingRow(pageNum, prefill) {
     const jobVal = (prefill && prefill.job) || '';
     const phaseVal = (prefill && prefill.phase) || '';
     const costVal = (prefill && prefill.cost) || '';
-    const amountVal = (prefill && prefill.amount) || '';
+    // Auto-fill amount: use prefill, or for first row use extracted amount
+    const amountVal = (prefill && prefill.amount) ||
+                      (rowIdx === 0 ? (pageAmounts[pageNum] || pageAmounts[String(pageNum)] || '') : '');
 
     row.innerHTML = `
         <div class="row-header">
@@ -232,7 +236,7 @@ function addCodingRow(pageNum, prefill) {
             <option value="">-- Select Phase --</option>
         </select>
         <label>Cost Code</label>
-        <select id="cost-${pageNum}-${rowIdx}">
+        <select id="cost-${pageNum}-${rowIdx}" onchange="updateProgress()">
             <option value="">-- Select Cost Code --</option>
         </select>
         <label>Amount</label>
@@ -250,6 +254,7 @@ function addCodingRow(pageNum, prefill) {
         }
     }
 
+    updateProgress();
     return row;
 }
 
@@ -317,7 +322,6 @@ function collectCodings() {
                     phase: selects[1].value,
                     cost: selects[2].value,
                     amount: input ? input.value : '',
-                    approved: document.getElementById(`approved-${page}`).checked,
                 });
             }
         });
@@ -326,27 +330,63 @@ function collectCodings() {
     return codings;
 }
 
+// Check if a row is fully coded (all 3 dropdowns selected)
+function isRowComplete(row) {
+    return row.job && row.phase && row.cost;
+}
+
+// Check page status: 'coded' (all rows complete), 'incomplete' (some started), 'empty' (nothing)
+function getPageStatus(rows) {
+    if (!rows || rows.length === 0) return 'empty';
+    const hasAnyJob = rows.some(r => r.job);
+    if (!hasAnyJob) return 'empty';
+    const allComplete = rows.every(r => !r.job || isRowComplete(r));
+    return allComplete ? 'coded' : 'incomplete';
+}
+
 function updateProgress() {
+    const codings = collectCodings();
     let coded = 0;
+
     for (let page = 1; page <= numPages; page++) {
-        const approved = document.getElementById(`approved-${page}`).checked;
-        const container = document.getElementById(`coding-rows-${page}`);
-        const hasJob = container.querySelector('select') &&
-                       Array.from(container.querySelectorAll('.coding-row')).some(row => {
-                           return row.querySelector('select').value !== '';
-                       });
+        const rows = codings[page] || [];
+        const status = getPageStatus(rows);
         const pageCard = document.getElementById(`page-${page}`);
         const navBtn = document.getElementById(`nav-${page}`);
+        const statusBadge = document.getElementById(`status-${page}`);
 
-        if (approved && hasJob) {
+        // Update card border
+        pageCard.classList.remove('coded', 'incomplete');
+        navBtn.classList.remove('coded-nav', 'incomplete-nav');
+
+        if (status === 'coded') {
             coded++;
             pageCard.classList.add('coded');
             navBtn.classList.add('coded-nav');
+            statusBadge.className = 'page-status coded';
+            statusBadge.textContent = 'Coded';
+        } else if (status === 'incomplete') {
+            pageCard.classList.add('incomplete');
+            navBtn.classList.add('incomplete-nav');
+            statusBadge.className = 'page-status incomplete';
+            statusBadge.textContent = 'Incomplete';
         } else {
-            pageCard.classList.remove('coded');
-            navBtn.classList.remove('coded-nav');
+            statusBadge.className = 'page-status empty';
+            statusBadge.textContent = 'Not coded';
         }
+
+        // Update individual row styling
+        const container = document.getElementById(`coding-rows-${page}`);
+        container.querySelectorAll('.coding-row').forEach(rowEl => {
+            const selects = rowEl.querySelectorAll('select');
+            if (selects.length >= 3 && selects[0].value && selects[1].value && selects[2].value) {
+                rowEl.classList.add('complete');
+            } else {
+                rowEl.classList.remove('complete');
+            }
+        });
     }
+
     document.getElementById('codedCount').textContent = coded;
     document.getElementById('progressFill').style.width =
         (numPages > 0 ? (coded / numPages * 100) : 0) + '%';
@@ -372,19 +412,44 @@ async function saveProgress() {
 async function submitToController() {
     const codings = collectCodings();
 
-    // Check if any pages are coded
+    // Check if at least one page has a job selected
     const hasCoding = Object.values(codings).some(rows =>
-        rows.some(r => r.job && r.approved)
+        rows.some(r => r.job)
     );
     if (!hasCoding) {
-        alert('Please code and approve at least one invoice before submitting.');
+        alert('Please code at least one invoice before submitting.');
         return;
+    }
+
+    // Find incomplete pages (has a job started but missing phase or cost)
+    const incompletePages = [];
+    for (const [page, rows] of Object.entries(codings)) {
+        const hasStarted = rows.some(r => r.job);
+        if (hasStarted) {
+            const allComplete = rows.every(r => !r.job || isRowComplete(r));
+            if (!allComplete) {
+                incompletePages.push(parseInt(page));
+            }
+        }
+    }
+
+    if (incompletePages.length > 0) {
+        const proceed = confirm(
+            `Pages ${incompletePages.join(', ')} have incomplete coding (missing Phase or Cost Code).\n\n` +
+            `Click OK to submit anyway — these pages will be flagged for the controller to review.\n` +
+            `Click Cancel to go back and finish coding.`
+        );
+        if (!proceed) {
+            // Scroll to first incomplete page
+            scrollToPage(incompletePages[0]);
+            return;
+        }
     }
 
     const resp = await fetch(`/api/code/${token}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ codings: codings }),
+        body: JSON.stringify({ codings: codings, flagged_pages: incompletePages }),
     });
     if (resp.ok) {
         const result = await resp.json();
@@ -404,9 +469,6 @@ window.addEventListener('DOMContentLoaded', () => {
         const saved = existingCodings[page] || existingCodings[String(page)];
         if (saved && saved.length > 0) {
             saved.forEach(coding => addCodingRow(page, coding));
-            if (saved[0] && saved[0].approved) {
-                document.getElementById(`approved-${page}`).checked = true;
-            }
         } else {
             addCodingRow(page);
         }

@@ -13,9 +13,10 @@
                     <th><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
                     <th>PM</th>
                     <th>Batch</th>
-                    <th>Coded Lines</th>
+                    <th>Coded Pages</th>
+                    <th>Flagged</th>
                     <th>Status</th>
-                    <th>Link</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -26,9 +27,31 @@
                         <input type="checkbox" name="tokens" value="{{ a.token }}" checked>
                         {% endif %}
                     </td>
-                    <td>{{ a.pm_name }}</td>
+                    <td>
+                        {% if a.pm_name == 'unassigned' %}
+                        <select id="reassign-{{ a.token }}" style="min-width:120px;">
+                            <option value="">Unassigned</option>
+                            {% for pm in pm_list %}
+                            <option value="{{ pm.name }}">{{ pm.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-sm btn-primary"
+                                onclick="reassignInvoice('{{ a.token }}')">Assign</button>
+                        {% else %}
+                        {{ a.pm_name }}
+                        {% endif %}
+                    </td>
                     <td><code>{{ a.batch_id }}</code></td>
                     <td>{{ a.coded_count }}</td>
+                    <td>
+                        {% if a.flagged_pages %}
+                        <span class="badge badge-overhead" title="Pages: {{ a.flagged_pages | join(', ') }}">
+                            {{ a.flagged_pages | length }} flagged
+                        </span>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
                     <td>
                         {% if a.status == 'completed' %}
                         <span class="badge badge-grouped">Completed</span>
@@ -41,7 +64,7 @@
                     <td>
                         <a href="{{ url_for('pm_coding_page', token=a.token) }}"
                            class="btn btn-sm btn-primary">View</a>
-                        <button class="btn btn-sm btn-warning"
+                        <button type="button" class="btn btn-sm btn-warning"
                                 onclick="copyLink('{{ a.token }}')"
                                 title="Copy coding link to clipboard">Copy Link</button>
                     </td>
@@ -110,6 +133,24 @@ function copyLink(token) {
     }).catch(() => {
         prompt('Copy this link:', url);
     });
+}
+async function reassignInvoice(token) {
+    const select = document.getElementById('reassign-' + token);
+    const newPm = select.value;
+    if (!newPm) {
+        alert('Select a PM first.');
+        return;
+    }
+    const resp = await fetch('/api/reassign/' + token, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pm_name: newPm }),
+    });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        alert('Error reassigning.');
+    }
 }
 </script>
 {% endblock %}

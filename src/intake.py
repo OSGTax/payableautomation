@@ -2,6 +2,7 @@
 
 import os
 import json
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -48,6 +49,55 @@ def render_page_to_png(pdf_path, page_num, output_path, dpi=150):
     return False
 
 
+def extract_amount_from_text(text):
+    """Extract the most likely invoice total from page text.
+
+    Looks for dollar amounts near keywords like 'total', 'amount due', 'balance due'.
+    Falls back to the largest dollar amount on the page.
+    """
+    if not text:
+        return ""
+
+    # Find all dollar amounts: $1,234.56 or 1,234.56 or $1234
+    amount_pattern = r'\$?\s*[\d,]+\.?\d{0,2}'
+    amounts = []
+
+    for match in re.finditer(amount_pattern, text):
+        raw = match.group().replace('$', '').replace(',', '').replace(' ', '')
+        try:
+            val = float(raw)
+            if val > 0.01:  # Skip tiny amounts
+                amounts.append((val, match.start(), match.group().strip()))
+        except ValueError:
+            continue
+
+    if not amounts:
+        return ""
+
+    # Look for amounts near total-related keywords
+    total_keywords = ['total', 'amount due', 'balance due', 'grand total',
+                      'invoice total', 'total due', 'net amount', 'pay this amount']
+    text_lower = text.lower()
+
+    best_keyword_amount = None
+    for keyword in total_keywords:
+        idx = text_lower.rfind(keyword)  # Use last occurrence (usually the final total)
+        if idx == -1:
+            continue
+        # Find the closest amount after this keyword (within 100 chars)
+        for val, pos, raw_str in amounts:
+            if idx <= pos <= idx + 100:
+                if best_keyword_amount is None or val > best_keyword_amount[0]:
+                    best_keyword_amount = (val, raw_str)
+
+    if best_keyword_amount:
+        return f"${best_keyword_amount[0]:,.2f}"
+
+    # Fallback: return the largest amount on the page
+    largest = max(amounts, key=lambda x: x[0])
+    return f"${largest[0]:,.2f}"
+
+
 def split_pdf_to_pages(pdf_path):
     """Split a multi-page PDF into individual page PDFs. Returns list of page info dicts."""
     pdf_path = Path(pdf_path)
@@ -78,6 +128,9 @@ def split_pdf_to_pages(pdf_path):
         # Try to identify job from text
         job_number, pm_name = get_job_for_keyword(text, config)
 
+        # Extract amount from text
+        extracted_amount = extract_amount_from_text(text)
+
         # Render thumbnail
         thumb_path = thumbs_dir / f"page_{i + 1:03d}.png"
         render_page_to_png(pdf_path, i, thumb_path, dpi=150)
@@ -87,6 +140,7 @@ def split_pdf_to_pages(pdf_path):
             "pdf_file": str(page_pdf.relative_to(batch_dir)),
             "thumbnail": str(thumb_path.relative_to(batch_dir)),
             "text_extract": text[:500],
+            "extracted_amount": extracted_amount,
             "suggested_job": job_number,
             "suggested_pm": pm_name,
             "status": "pending",          # pending | grouped | overhead | skipped

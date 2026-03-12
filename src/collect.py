@@ -24,15 +24,8 @@ def read_coded_pdf(pdf_path):
     for page_idx in range(num_pages):
         page_data = {
             "page": page_idx + 1,
-            "approved": False,
             "codings": [],
         }
-
-        # Check approved checkbox
-        cb_name = f"ApprovedCheckbox_{page_idx}"
-        if cb_name in fields:
-            val = fields[cb_name].get("/V")
-            page_data["approved"] = val in ("/Yes", "Yes", True)
 
         # Read coding rows
         for row in range(3):

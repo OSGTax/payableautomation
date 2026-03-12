@@ -1,0 +1,417 @@
+{% extends "base.html" %}
+{% block title %}Code Invoices - {{ assignment.pm_name }}{% endblock %}
+
+{% block extra_styles %}
+.invoice-page {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 16px;
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+.invoice-page.coded { border-color: #27ae60; }
+.page-image {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    overflow: hidden;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+.page-image img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+.coding-panel { display: flex; flex-direction: column; gap: 12px; }
+.coding-panel h3 { font-size: 16px; color: #2c3e50; margin: 0; }
+.coding-row {
+    background: #f8f9fa;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+}
+.coding-row label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #666;
+    margin-bottom: 3px;
+}
+.coding-row select, .coding-row input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+    margin-bottom: 6px;
+}
+.coding-row select:focus, .coding-row input:focus {
+    border-color: #3498db;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+.row-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.row-header span { font-size: 13px; font-weight: 600; color: #2c3e50; }
+.add-row-btn {
+    font-size: 12px;
+    color: #3498db;
+    background: none;
+    border: 1px dashed #3498db;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.add-row-btn:hover { background: #eaf4fd; }
+.remove-row-btn {
+    font-size: 11px;
+    color: #e74c3c;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.approved-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: #e8f5e9;
+    border-radius: 4px;
+}
+.approved-check input { width: 18px; height: 18px; }
+.approved-check label { font-size: 14px; font-weight: 600; color: #27ae60; margin: 0; }
+.toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.toolbar .info { font-size: 14px; color: #666; }
+.progress-bar {
+    flex: 1;
+    height: 6px;
+    background: #e0e0e0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+.progress-fill {
+    height: 100%;
+    background: #27ae60;
+    transition: width 0.3s;
+}
+.submit-section {
+    text-align: center;
+    padding: 24px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.page-nav {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+.page-nav button {
+    padding: 4px 8px;
+    font-size: 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+}
+.page-nav button.active { background: #3498db; color: white; border-color: #3498db; }
+.page-nav button.coded-nav { background: #e8f5e9; border-color: #27ae60; }
+{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <strong>{{ assignment.pm_name }}'s Invoices</strong>
+    <span class="info"><span id="codedCount">0</span> / {{ num_pages }} pages coded</span>
+    <div class="progress-bar">
+        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+    </div>
+    <button class="btn btn-primary" onclick="saveProgress()">Save Progress</button>
+    <button class="btn btn-success" onclick="submitToController()">Send to Controller</button>
+</div>
+
+<div class="page-nav" id="pageNav">
+    {% for i in range(num_pages) %}
+    <button onclick="scrollToPage({{ i + 1 }})" id="nav-{{ i + 1 }}">{{ i + 1 }}</button>
+    {% endfor %}
+</div>
+
+{% for page_idx in range(num_pages) %}
+<div class="invoice-page" id="page-{{ page_idx + 1 }}" data-page="{{ page_idx + 1 }}">
+    <div class="page-image">
+        <img src="{{ url_for('pm_page_image', token=token, page_num=page_idx + 1) }}"
+             alt="Invoice page {{ page_idx + 1 }}" loading="lazy">
+    </div>
+    <div class="coding-panel">
+        <h3>Page {{ page_idx + 1 }} of {{ num_pages }}</h3>
+
+        <div id="coding-rows-{{ page_idx + 1 }}">
+            <!-- Coding rows inserted by JS -->
+        </div>
+
+        <button class="add-row-btn" onclick="addCodingRow({{ page_idx + 1 }})">+ Add Line</button>
+
+        <div class="approved-check">
+            <input type="checkbox" id="approved-{{ page_idx + 1 }}"
+                   onchange="updateProgress()">
+            <label for="approved-{{ page_idx + 1 }}">Approved</label>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<div class="submit-section">
+    <p style="margin-bottom: 12px;">When you're done coding all invoices:</p>
+    <button class="btn btn-success" style="font-size: 16px; padding: 12px 32px;"
+            onclick="submitToController()">Send to Controller</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const token = "{{ token }}";
+const numPages = {{ num_pages }};
+
+// Cascading dropdown data
+const phaseMap = {{ phase_map | tojson }};
+const costMap = {{ cost_map | tojson }};
+const jobList = {{ job_list | tojson }};
+
+// Existing codings from saved progress
+const existingCodings = {{ assignment.codings | tojson }};
+
+let rowCounters = {};
+
+function addCodingRow(pageNum, prefill) {
+    if (!rowCounters[pageNum]) rowCounters[pageNum] = 0;
+    const rowIdx = rowCounters[pageNum]++;
+    const container = document.getElementById(`coding-rows-${pageNum}`);
+
+    const row = document.createElement('div');
+    row.className = 'coding-row';
+    row.id = `row-${pageNum}-${rowIdx}`;
+
+    const jobVal = (prefill && prefill.job) || '';
+    const phaseVal = (prefill && prefill.phase) || '';
+    const costVal = (prefill && prefill.cost) || '';
+    const amountVal = (prefill && prefill.amount) || '';
+
+    row.innerHTML = `
+        <div class="row-header">
+            <span>Line ${rowIdx + 1}</span>
+            <button class="remove-row-btn" onclick="removeRow(${pageNum}, ${rowIdx})">Remove</button>
+        </div>
+        <label>Job</label>
+        <select id="job-${pageNum}-${rowIdx}" onchange="onJobChange(${pageNum}, ${rowIdx})">
+            <option value="">-- Select Job --</option>
+            ${jobList.map(j => `<option value="${j}" ${j === jobVal ? 'selected' : ''}>${j}</option>`).join('')}
+        </select>
+        <label>Phase</label>
+        <select id="phase-${pageNum}-${rowIdx}" onchange="onPhaseChange(${pageNum}, ${rowIdx})">
+            <option value="">-- Select Phase --</option>
+        </select>
+        <label>Cost Code</label>
+        <select id="cost-${pageNum}-${rowIdx}">
+            <option value="">-- Select Cost Code --</option>
+        </select>
+        <label>Amount</label>
+        <input type="text" id="amount-${pageNum}-${rowIdx}" placeholder="$0.00"
+               value="${amountVal}" onchange="updateProgress()">
+    `;
+
+    container.appendChild(row);
+
+    // Populate cascading dropdowns if prefilled
+    if (jobVal) {
+        populatePhases(pageNum, rowIdx, jobVal, phaseVal);
+        if (phaseVal) {
+            populateCosts(pageNum, rowIdx, jobVal, phaseVal, costVal);
+        }
+    }
+
+    return row;
+}
+
+function removeRow(pageNum, rowIdx) {
+    const row = document.getElementById(`row-${pageNum}-${rowIdx}`);
+    if (row) row.remove();
+    updateProgress();
+}
+
+function onJobChange(pageNum, rowIdx) {
+    const jobSelect = document.getElementById(`job-${pageNum}-${rowIdx}`);
+    const jobVal = jobSelect.value;
+    populatePhases(pageNum, rowIdx, jobVal);
+    // Clear cost
+    const costSelect = document.getElementById(`cost-${pageNum}-${rowIdx}`);
+    costSelect.innerHTML = '<option value="">-- Select Cost Code --</option>';
+    updateProgress();
+}
+
+function onPhaseChange(pageNum, rowIdx) {
+    const jobVal = document.getElementById(`job-${pageNum}-${rowIdx}`).value;
+    const phaseVal = document.getElementById(`phase-${pageNum}-${rowIdx}`).value;
+    populateCosts(pageNum, rowIdx, jobVal, phaseVal);
+    updateProgress();
+}
+
+function populatePhases(pageNum, rowIdx, jobVal, selectedPhase) {
+    const phaseSelect = document.getElementById(`phase-${pageNum}-${rowIdx}`);
+    phaseSelect.innerHTML = '<option value="">-- Select Phase --</option>';
+    const phases = phaseMap[jobVal] || [];
+    phases.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        if (p === selectedPhase) opt.selected = true;
+        phaseSelect.appendChild(opt);
+    });
+}
+
+function populateCosts(pageNum, rowIdx, jobVal, phaseVal, selectedCost) {
+    const costSelect = document.getElementById(`cost-${pageNum}-${rowIdx}`);
+    costSelect.innerHTML = '<option value="">-- Select Cost Code --</option>';
+    const key = `${jobVal}||${phaseVal}`;
+    const costs = costMap[key] || [];
+    costs.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        if (c === selectedCost) opt.selected = true;
+        costSelect.appendChild(opt);
+    });
+}
+
+function collectCodings() {
+    const codings = {};
+    for (let page = 1; page <= numPages; page++) {
+        const rows = [];
+        const container = document.getElementById(`coding-rows-${page}`);
+        container.querySelectorAll('.coding-row').forEach(row => {
+            const selects = row.querySelectorAll('select');
+            const input = row.querySelector('input[type="text"]');
+            if (selects.length >= 3) {
+                rows.push({
+                    job: selects[0].value,
+                    phase: selects[1].value,
+                    cost: selects[2].value,
+                    amount: input ? input.value : '',
+                    approved: document.getElementById(`approved-${page}`).checked,
+                });
+            }
+        });
+        codings[page] = rows;
+    }
+    return codings;
+}
+
+function updateProgress() {
+    let coded = 0;
+    for (let page = 1; page <= numPages; page++) {
+        const approved = document.getElementById(`approved-${page}`).checked;
+        const container = document.getElementById(`coding-rows-${page}`);
+        const hasJob = container.querySelector('select') &&
+                       Array.from(container.querySelectorAll('.coding-row')).some(row => {
+                           return row.querySelector('select').value !== '';
+                       });
+        const pageCard = document.getElementById(`page-${page}`);
+        const navBtn = document.getElementById(`nav-${page}`);
+
+        if (approved && hasJob) {
+            coded++;
+            pageCard.classList.add('coded');
+            navBtn.classList.add('coded-nav');
+        } else {
+            pageCard.classList.remove('coded');
+            navBtn.classList.remove('coded-nav');
+        }
+    }
+    document.getElementById('codedCount').textContent = coded;
+    document.getElementById('progressFill').style.width =
+        (numPages > 0 ? (coded / numPages * 100) : 0) + '%';
+}
+
+function scrollToPage(pageNum) {
+    document.getElementById(`page-${pageNum}`).scrollIntoView({ behavior: 'smooth' });
+}
+
+async function saveProgress() {
+    const resp = await fetch(`/api/code/${token}/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codings: collectCodings() }),
+    });
+    if (resp.ok) {
+        alert('Progress saved.');
+    } else {
+        alert('Error saving.');
+    }
+}
+
+async function submitToController() {
+    const codings = collectCodings();
+
+    // Check if any pages are coded
+    const hasCoding = Object.values(codings).some(rows =>
+        rows.some(r => r.job && r.approved)
+    );
+    if (!hasCoding) {
+        alert('Please code and approve at least one invoice before submitting.');
+        return;
+    }
+
+    const resp = await fetch(`/api/code/${token}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codings: codings }),
+    });
+    if (resp.ok) {
+        const result = await resp.json();
+        alert(result.message);
+        // Disable form after submission
+        document.querySelectorAll('select, input, button').forEach(el => {
+            if (!el.classList.contains('btn')) el.disabled = true;
+        });
+    } else {
+        alert('Error submitting. Please try again.');
+    }
+}
+
+// Initialize: add one coding row per page, or restore saved progress
+window.addEventListener('DOMContentLoaded', () => {
+    for (let page = 1; page <= numPages; page++) {
+        const saved = existingCodings[page] || existingCodings[String(page)];
+        if (saved && saved.length > 0) {
+            saved.forEach(coding => addCodingRow(page, coding));
+            if (saved[0] && saved[0].approved) {
+                document.getElementById(`approved-${page}`).checked = true;
+            }
+        } else {
+            addCodingRow(page);
+        }
+    }
+    updateProgress();
+});
+</script>
+{% endblock %}

@@ -4,6 +4,8 @@
 project_managers:
   nick:
     name: "Nick"
+    email: ""           # e.g. nick@yourcompany.com
+    onedrive_folder: "" # e.g. C:\Users\You\OneDrive\PM Invoices\Nick
     jobs:
       - "25-002"  # STEP BY STEP - OGDENSBURG
       - "25-003"  # HAMMOND CSD CAPITAL PROJECT
@@ -14,9 +16,30 @@ project_managers:
 
   frank:
     name: "Frank"
+    email: ""           # e.g. frank@yourcompany.com
+    onedrive_folder: "" # e.g. C:\Users\You\OneDrive\PM Invoices\Frank
     jobs:
       - "25-010"  # GRASSY GROVE SOLAR EAST
       - "25-011"  # SAWMILL BAY SOLAR
+
+# Email settings for notifications
+email:
+  enabled: false        # Set to true once configured
+  smtp_server: "smtp.office365.com"
+  smtp_port: 587
+  sender_email: ""      # Your Outlook email
+  # Store password in .env file, NOT here (see .env.example)
+  app_url: ""            # e.g. https://your-codespace-5000.app.github.dev
+  subject_template: "Invoices Ready for Coding - {date}"
+  body_template: |
+    Hi {pm_name},
+
+    You have {invoice_count} invoice(s) ready for coding.
+
+    Click here to code them:
+    {coding_url}
+
+    Thanks
 
 # Keywords that help identify which job an invoice belongs to.
 # Used during intake to suggest job/PM assignment.

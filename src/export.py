@@ -109,6 +109,76 @@ def export_coded_pdfs_to_xml(coded_files=None, output_path=None):
     return str(output_path)
 
 
+def export_browser_codings_to_xml(tokens=None, output_path=None):
+    """Export browser-submitted PM codings to CE XML format.
+
+    Args:
+        tokens: list of assignment tokens, or None for all completed
+        output_path: output XML path
+    """
+    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    assignments_dir = DATA_DIR / "assignments"
+
+    if output_path is None:
+        date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = EXPORT_DIR / f"ap_import_{date_str}.xml"
+
+    root = ET.Element("apinvoices")
+
+    # Load assignments
+    if tokens:
+        files = [assignments_dir / f"{t}.json" for t in tokens]
+    else:
+        files = sorted(assignments_dir.glob("*.json")) if assignments_dir.exists() else []
+
+    for fpath in files:
+        if not fpath.exists():
+            continue
+        import json
+        with open(fpath) as f:
+            assignment = json.load(f)
+
+        if assignment.get("status") != "completed":
+            continue
+
+        for page_num, codings in assignment.get("codings", {}).items():
+            for coding in codings:
+                job_val = coding.get("job", "")
+                if not job_val:
+                    continue
+
+                inv_elem = ET.SubElement(root, "apinvoice")
+
+                # Parse job number from full string
+                job_number = job_val.split(".")[0] if "." in job_val else job_val
+                ET.SubElement(inv_elem, "jobnum").text = job_number
+
+                phase_val = coding.get("phase", "")
+                if phase_val:
+                    phase_number = phase_val.split(".")[0] if "." in phase_val else phase_val
+                    ET.SubElement(inv_elem, "phasenum").text = phase_number
+
+                cost_val = coding.get("cost", "")
+                if cost_val:
+                    cost_number = cost_val.split(".")[0] if "." in cost_val else cost_val
+                    ET.SubElement(inv_elem, "catnum").text = cost_number
+
+                amount_val = coding.get("amount", "")
+                if amount_val:
+                    try:
+                        ET.SubElement(inv_elem, "amount").text = str(
+                            float(amount_val.replace(",", "").replace("$", ""))
+                        )
+                    except ValueError:
+                        ET.SubElement(inv_elem, "amount").text = amount_val
+
+    tree = ET.ElementTree(root)
+    ET.indent(tree, space="  ")
+    tree.write(str(output_path), encoding="unicode", xml_declaration=True)
+
+    return str(output_path)
+
+
 def export_overhead_to_xml(overhead_data, output_path=None):
     """Export overhead invoice codings to CE XML format.
 

@@ -224,6 +224,16 @@ def pm_coding_page(token):
     pdf_path = Path(assignment["pdf_file"])
     num_pages = len(PdfReader(pdf_path).pages) if pdf_path.exists() else 0
 
+    # Load extracted amounts from batch manifest
+    page_amounts = {}
+    try:
+        batch_manifest = load_batch(assignment["batch_id"])
+        for page in batch_manifest["pages"]:
+            if page.get("extracted_amount"):
+                page_amounts[page["page_num"]] = page["extracted_amount"]
+    except Exception:
+        pass  # Amounts are optional
+
     return render_template(
         "pm_coding.html",
         assignment=assignment,
@@ -232,6 +242,7 @@ def pm_coding_page(token):
         phase_map=phase_map,
         cost_map=cost_map,
         num_pages=num_pages,
+        page_amounts=page_amounts,
     )
 
 
@@ -298,32 +309,85 @@ def submit_pm_coding(token):
         assignment = json.load(f)
 
     assignment["codings"] = data.get("codings", {})
+    assignment["flagged_pages"] = data.get("flagged_pages", [])
     assignment["status"] = "completed"
 
     with open(assignment_path, "w") as f:
         json.dump(assignment, f, indent=2)
 
-    return jsonify({"status": "ok", "message": "Submitted to controller. Thank you!"})
+    flagged = data.get("flagged_pages", [])
+    if flagged:
+        msg = f"Submitted. Pages {', '.join(str(p) for p in flagged)} flagged for controller review."
+    else:
+        msg = "Submitted to controller. Thank you!"
+
+    return jsonify({"status": "ok", "message": msg})
 
 
 @app.route("/collect")
 def collect_view():
     """View coded invoices from PMs (browser-submitted + PDF inbox)."""
+    config = load_pm_assignments()
+    pm_list = [{"key": k, "name": v["name"]} for k, v in config["project_managers"].items()]
+
     # Browser-submitted assignments
     assignments = []
     if ASSIGNMENTS_DIR.exists():
         for f in sorted(ASSIGNMENTS_DIR.glob("*.json")):
             with open(f) as fh:
                 a = json.load(fh)
-                coded_count = sum(1 for codings in a.get("codings", {}).values()
-                                  if any(c.get("job") for c in codings))
+                # Count pages where all rows have job+phase+cost
+                coded_count = sum(
+                    1 for codings in a.get("codings", {}).values()
+                    if codings and all(
+                        c.get("job") and c.get("phase") and c.get("cost")
+                        for c in codings
+                    )
+                )
                 a["coded_count"] = coded_count
+                a["flagged_pages"] = a.get("flagged_pages", [])
                 assignments.append(a)
 
     # Legacy PDF inbox
     pdf_results = scan_pm_inbox() if (DATA_DIR / "pm-inbox").exists() else []
 
-    return render_template("collect.html", assignments=assignments, pdf_results=pdf_results)
+    return render_template("collect.html", assignments=assignments,
+                           pdf_results=pdf_results, pm_list=pm_list)
+
+
+@app.route("/api/reassign/<token>", methods=["POST"])
+def reassign_invoice(token):
+    """Reassign an invoice (e.g. unassigned) to a specific PM."""
+    assignment_path = ASSIGNMENTS_DIR / f"{token}.json"
+    if not assignment_path.exists():
+        return jsonify({"error": "Invalid token"}), 404
+
+    data = request.get_json()
+    new_pm = data.get("pm_name", "")
+    if not new_pm:
+        return jsonify({"error": "No PM specified"}), 400
+
+    with open(assignment_path) as f:
+        assignment = json.load(f)
+
+    old_pm = assignment["pm_name"]
+    assignment["pm_name"] = new_pm
+
+    # Move the PDF to the new PM's outbox
+    old_pdf = Path(assignment["pdf_file"])
+    if old_pdf.exists():
+        from .prepare import PM_OUTBOX_DIR
+        new_pm_dir = PM_OUTBOX_DIR / new_pm
+        new_pm_dir.mkdir(parents=True, exist_ok=True)
+        new_pdf = new_pm_dir / old_pdf.name.replace(old_pm, new_pm)
+        import shutil
+        shutil.move(str(old_pdf), str(new_pdf))
+        assignment["pdf_file"] = str(new_pdf)
+
+    with open(assignment_path, "w") as f:
+        json.dump(assignment, f, indent=2)
+
+    return jsonify({"status": "ok", "message": f"Reassigned to {new_pm}"})
 
 
 @app.route("/export", methods=["POST"])

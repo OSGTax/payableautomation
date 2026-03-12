@@ -336,28 +336,43 @@ async function saveAll() {
 }
 
 async function saveAndDistribute() {
-    // Save first
-    const saveResp = await fetch(`/api/prescreen/${batchId}/save`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildSaveData()),
-    });
-    if (!saveResp.ok) {
-        alert('Error saving.');
-        return;
-    }
+    const statusDiv = document.createElement('div');
+    statusDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:24px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;font-size:16px;text-align:center;';
+    statusDiv.textContent = 'Saving and distributing... please wait.';
+    document.body.appendChild(statusDiv);
 
-    // Then distribute
-    const distResp = await fetch(`/api/prescreen/${batchId}/distribute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-    });
-    if (distResp.ok) {
-        // Redirect to Collect & Export page where assignments are listed
-        window.location.href = '/collect';
-    } else {
-        const err = await distResp.text();
-        alert('Error distributing: ' + err);
+    try {
+        // Save first
+        const saveResp = await fetch(`/api/prescreen/${batchId}/save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(buildSaveData()),
+        });
+        if (!saveResp.ok) {
+            statusDiv.textContent = 'Error saving. Check the console (F12) for details.';
+            statusDiv.style.color = 'red';
+            console.error('Save error:', await saveResp.text());
+            return;
+        }
+
+        statusDiv.textContent = 'Saved. Now distributing to PMs...';
+
+        // Then distribute
+        const distResp = await fetch(`/api/prescreen/${batchId}/distribute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        if (distResp.ok) {
+            statusDiv.textContent = 'Done! Redirecting to Collect & Export...';
+            window.location.href = '/collect';
+        } else {
+            const errText = await distResp.text();
+            statusDiv.innerHTML = '<strong style="color:red;">Error distributing:</strong><br><pre style="text-align:left;font-size:12px;max-height:300px;overflow:auto;">' + errText + '</pre>';
+            console.error('Distribute error:', errText);
+        }
+    } catch (e) {
+        statusDiv.innerHTML = '<strong style="color:red;">Network error:</strong><br>' + e.message;
+        console.error('Network error:', e);
     }
 }
 

@@ -145,13 +145,19 @@ def save_prescreen(batch_id):
 @app.route("/api/prescreen/<batch_id>/distribute", methods=["POST"])
 def distribute(batch_id):
     """Finalize pre-screening and distribute to PMs."""
+    import traceback
+
     # Check if already distributed (prevent duplicates)
     manifest = load_batch(batch_id)
     if manifest.get("distributed"):
         return jsonify({"status": "ok", "results": manifest.get("distribution_results", {}),
                         "message": "Already distributed."}), 200
 
-    results = group_and_distribute(batch_id)
+    try:
+        results = group_and_distribute(batch_id)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
     # Create browser coding assignments for each PM
     ASSIGNMENTS_DIR.mkdir(parents=True, exist_ok=True)

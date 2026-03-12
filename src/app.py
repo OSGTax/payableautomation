@@ -42,29 +42,55 @@ def index():
 
 @app.route("/upload", methods=["POST"])
 def upload():
-    """Upload a PDF for processing."""
-    if "file" not in request.files:
-        flash("No file selected.")
+    """Upload one or more PDFs for processing. Multiple files are merged into one batch."""
+    from pypdf import PdfReader, PdfWriter
+
+    files = request.files.getlist("file")
+    files = [f for f in files if f.filename and f.filename.lower().endswith('.pdf')]
+
+    if not files:
+        flash("No PDF files selected.")
         return redirect(url_for("index"))
 
-    file = request.files["file"]
-    if not file.filename:
-        flash("No file selected.")
-        return redirect(url_for("index"))
-
-    # Save uploaded file temporarily
     upload_dir = DATA_DIR / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
-    filepath = upload_dir / file.filename
-    file.save(str(filepath))
 
-    # Process: split into pages
-    batch_id, manifest = split_pdf_to_pages(filepath)
+    if len(files) == 1:
+        # Single file — process directly
+        filepath = upload_dir / files[0].filename
+        files[0].save(str(filepath))
+        batch_id, manifest = split_pdf_to_pages(filepath)
+        os.remove(filepath)
+        flash(f"Uploaded {files[0].filename}: {manifest['total_pages']} pages ready for review.")
+    else:
+        # Multiple files — merge into one PDF then process
+        writer = PdfWriter()
+        filenames = []
+        saved_paths = []
 
-    # Clean up uploaded file
-    os.remove(filepath)
+        for f in files:
+            filepath = upload_dir / f.filename
+            f.save(str(filepath))
+            saved_paths.append(filepath)
+            filenames.append(f.filename)
+            reader = PdfReader(filepath)
+            for page in reader.pages:
+                writer.add_page(page)
 
-    flash(f"Uploaded {file.filename}: {manifest['total_pages']} pages ready for review.")
+        merged_path = upload_dir / "merged_upload.pdf"
+        with open(merged_path, "wb") as mf:
+            writer.write(mf)
+
+        batch_id, manifest = split_pdf_to_pages(merged_path)
+
+        # Clean up
+        os.remove(merged_path)
+        for p in saved_paths:
+            os.remove(p)
+
+        total = manifest['total_pages']
+        flash(f"Uploaded {len(files)} files ({total} pages total) ready for review.")
+
     return redirect(url_for("prescreen", batch_id=batch_id))
 
 

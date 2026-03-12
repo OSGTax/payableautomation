@@ -15,12 +15,14 @@
     border: 2px solid #e0e0e0;
     border-radius: 8px;
     padding: 16px;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, background 0.2s;
 }
-.page-card.status-overhead { border-color: #f39c12; background: #fff9e6; }
-.page-card.status-grouped { border-color: #3498db; background: #eaf4fd; }
+.page-card.assigned-nick { border-color: #2ecc71; background: #f0faf3; }
+.page-card.assigned-frank { border-color: #3498db; background: #eaf4fd; }
+.page-card.assigned-andy { border-color: #9b59b6; background: #f5eef8; }
+.page-card.assigned-overhead { border-color: #f39c12; background: #fff9e6; }
+.page-card.status-grouped { border-color: #1abc9c; background: #e8faf5; }
 .page-card.status-skipped { border-color: #e74c3c; background: #fde8e6; }
-.page-card.status-pending { border-color: #e0e0e0; }
 .page-thumb {
     cursor: pointer;
     border: 1px solid #ddd;
@@ -37,9 +39,27 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
 }
 .page-header strong { font-size: 16px; }
+.assign-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+.assign-btn {
+    padding: 8px 16px;
+    border: 2px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    background: #f0f0f0;
+    transition: all 0.15s;
+}
+.assign-btn:hover { filter: brightness(0.95); }
+.assign-btn.active-nick { background: #2ecc71; color: white; }
+.assign-btn.active-frank { background: #3498db; color: white; }
+.assign-btn.active-andy { background: #9b59b6; color: white; }
+.assign-btn.active-overhead { background: #f39c12; color: white; }
+.assign-btn.active-grouped { background: #1abc9c; color: white; }
+.assign-btn.active-skipped { background: #e74c3c; color: white; }
 .control-row {
     display: flex;
     align-items: center;
@@ -48,21 +68,6 @@
 }
 .control-row label { font-size: 13px; font-weight: 600; min-width: 80px; }
 .control-row select, .control-row input { flex: 1; min-width: 150px; }
-.status-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
-.status-btn {
-    padding: 6px 12px;
-    border: 2px solid transparent;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 600;
-    background: #f0f0f0;
-}
-.status-btn:hover { background: #e0e0e0; }
-.status-btn.active-pending { background: #95a5a6; color: white; }
-.status-btn.active-grouped { background: #3498db; color: white; }
-.status-btn.active-overhead { background: #f39c12; color: white; }
-.status-btn.active-skipped { background: #e74c3c; color: white; }
 .overhead-fields { margin-top: 8px; padding: 10px; background: #fff3cd; border-radius: 4px; }
 .overhead-fields .control-row { margin-bottom: 4px; }
 .text-extract {
@@ -81,6 +86,12 @@
     color: #27ae60;
     font-style: italic;
 }
+.assigned-label {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
 .toolbar {
     position: sticky;
     top: 0;
@@ -95,6 +106,7 @@
     margin-bottom: 16px;
 }
 .toolbar .info { font-size: 14px; color: #666; }
+.toolbar .counts { font-size: 12px; color: #999; }
 /* Modal for enlarged view */
 .modal-overlay {
     display: none;
@@ -121,6 +133,7 @@
 <div class="toolbar">
     <strong>{{ manifest.source_file }}</strong>
     <span class="info">{{ manifest.total_pages }} pages</span>
+    <span class="counts" id="assignCounts"></span>
     <div style="flex:1;"></div>
     <button class="btn btn-primary" onclick="saveAll()">Save Progress</button>
     <button class="btn btn-success" onclick="saveAndDistribute()">Save & Distribute to PMs</button>
@@ -128,7 +141,7 @@
 
 <div class="page-grid">
 {% for page in manifest.pages %}
-<div class="page-card status-{{ page.status }}" id="page-{{ page.page_num }}" data-page="{{ page.page_num }}">
+<div class="page-card" id="page-{{ page.page_num }}" data-page="{{ page.page_num }}">
     <div class="page-thumb" onclick="enlargeImage({{ page.page_num }})">
         <img src="{{ url_for('page_thumbnail', batch_id=batch_id, page_num=page.page_num) }}"
              alt="Page {{ page.page_num }}" loading="lazy">
@@ -137,35 +150,29 @@
         <div class="page-header">
             <strong>Page {{ page.page_num }}</strong>
             {% if page.suggested_job %}
-            <span class="suggestion">Suggested: {{ page.suggested_job }} ({{ page.suggested_pm }})</span>
+            <span class="suggestion">Auto: {{ page.suggested_job }} → {{ page.suggested_pm }}</span>
+            {% endif %}
+            {% if page.extracted_amount %}
+            <span style="font-size:12px; color:#2c3e50; font-weight:600;">{{ page.extracted_amount }}</span>
             {% endif %}
         </div>
 
-        <div class="status-buttons">
-            <button class="status-btn {% if page.status == 'pending' %}active-pending{% endif %}"
-                    onclick="setStatus({{ page.page_num }}, 'pending')">Send to PM</button>
-            <button class="status-btn {% if page.group_with_prev %}active-grouped{% endif %}"
-                    onclick="toggleGroupWithPrev({{ page.page_num }})">Group with Previous</button>
-            <button class="status-btn {% if page.status == 'overhead' %}active-overhead{% endif %}"
-                    onclick="setStatus({{ page.page_num }}, 'overhead')">Overhead (I'll Code)</button>
-            <button class="status-btn {% if page.status == 'skipped' %}active-skipped{% endif %}"
-                    onclick="setStatus({{ page.page_num }}, 'skipped')">Skip</button>
+        <div class="assign-buttons">
+            {% for pm in pm_list %}
+            <button class="assign-btn" data-pm="{{ pm.name }}"
+                    onclick="assignPM({{ page.page_num }}, '{{ pm.name }}')">{{ pm.name }}</button>
+            {% endfor %}
+            <button class="assign-btn" data-action="overhead"
+                    onclick="assignOverhead({{ page.page_num }})">Overhead</button>
+            <button class="assign-btn" data-action="group"
+                    onclick="toggleGroupWithPrev({{ page.page_num }})"
+                    {% if page.page_num == 1 %}disabled style="opacity:0.4"{% endif %}>Group w/ Prev</button>
+            <button class="assign-btn" data-action="skip"
+                    onclick="assignSkip({{ page.page_num }})" style="font-size:11px;">Skip</button>
         </div>
 
         <div class="control-row">
-            <label>Assign PM:</label>
-            <select id="pm-{{ page.page_num }}" onchange="updatePM({{ page.page_num }})">
-                <option value="">Auto-detect</option>
-                {% for pm in pm_list %}
-                <option value="{{ pm.name }}" {% if page.assigned_pm == pm.name %}selected{% endif %}>
-                    {{ pm.name }}
-                </option>
-                {% endfor %}
-            </select>
-        </div>
-
-        <div class="control-row">
-            <label>Assign Job:</label>
+            <label>Job:</label>
             <select id="job-{{ page.page_num }}" onchange="updateJob({{ page.page_num }})">
                 <option value="">Auto-detect</option>
                 {% for job in job_list %}
@@ -230,6 +237,13 @@
 const batchId = "{{ batch_id }}";
 const pageData = {};
 
+// PM name to CSS class mapping
+const pmColors = {
+    {% for pm in pm_list %}
+    '{{ pm.name }}': 'assigned-{{ pm.key }}',
+    {% endfor %}
+};
+
 // Initialize page data from server
 {% for page in manifest.pages %}
 pageData[{{ page.page_num }}] = {
@@ -242,39 +256,58 @@ pageData[{{ page.page_num }}] = {
 };
 {% endfor %}
 
-function setStatus(pageNum, status) {
-    const card = document.getElementById('page-' + pageNum);
+function assignPM(pageNum, pmName) {
     const data = pageData[pageNum];
-
-    // Toggle: if already this status, go back to pending
-    if (data.status === status && status !== 'pending') {
-        data.status = 'pending';
+    // Toggle off if already assigned to this PM
+    if (data.assigned_pm === pmName && data.status === 'pending') {
+        data.assigned_pm = '';
     } else {
-        data.status = status;
-    }
-
-    // If setting to overhead, ungroup
-    if (data.status === 'overhead') {
+        data.assigned_pm = pmName;
+        data.status = 'pending';
         data.group_with_prev = false;
     }
-
     updateCardDisplay(pageNum);
+    updateCounts();
+}
+
+function assignOverhead(pageNum) {
+    const data = pageData[pageNum];
+    if (data.status === 'overhead') {
+        data.status = 'pending';
+    } else {
+        data.status = 'overhead';
+        data.assigned_pm = '';
+        data.group_with_prev = false;
+    }
+    updateCardDisplay(pageNum);
+    updateCounts();
+}
+
+function assignSkip(pageNum) {
+    const data = pageData[pageNum];
+    if (data.status === 'skipped') {
+        data.status = 'pending';
+    } else {
+        data.status = 'skipped';
+        data.assigned_pm = '';
+        data.group_with_prev = false;
+    }
+    updateCardDisplay(pageNum);
+    updateCounts();
 }
 
 function toggleGroupWithPrev(pageNum) {
-    if (pageNum === 1) return; // Can't group first page
+    if (pageNum === 1) return;
     const data = pageData[pageNum];
     data.group_with_prev = !data.group_with_prev;
     if (data.group_with_prev) {
         data.status = 'grouped';
+        data.assigned_pm = '';
     } else {
         data.status = 'pending';
     }
     updateCardDisplay(pageNum);
-}
-
-function updatePM(pageNum) {
-    pageData[pageNum].assigned_pm = document.getElementById('pm-' + pageNum).value;
+    updateCounts();
 }
 
 function updateJob(pageNum) {
@@ -285,19 +318,63 @@ function updateCardDisplay(pageNum) {
     const card = document.getElementById('page-' + pageNum);
     const data = pageData[pageNum];
 
-    // Update card border color
-    card.className = 'page-card status-' + data.status;
+    // Reset all card classes
+    card.className = 'page-card';
 
-    // Update button states
-    const buttons = card.querySelectorAll('.status-btn');
-    buttons[0].className = 'status-btn' + (data.status === 'pending' ? ' active-pending' : '');
-    buttons[1].className = 'status-btn' + (data.group_with_prev ? ' active-grouped' : '');
-    buttons[2].className = 'status-btn' + (data.status === 'overhead' ? ' active-overhead' : '');
-    buttons[3].className = 'status-btn' + (data.status === 'skipped' ? ' active-skipped' : '');
+    // Apply card color based on assignment
+    if (data.group_with_prev) {
+        card.classList.add('status-grouped');
+    } else if (data.status === 'overhead') {
+        card.classList.add('assigned-overhead');
+    } else if (data.status === 'skipped') {
+        card.classList.add('status-skipped');
+    } else if (data.assigned_pm && pmColors[data.assigned_pm]) {
+        card.classList.add(pmColors[data.assigned_pm]);
+    }
+
+    // Update button active states
+    const buttons = card.querySelectorAll('.assign-btn');
+    buttons.forEach(btn => {
+        const pm = btn.getAttribute('data-pm');
+        const action = btn.getAttribute('data-action');
+
+        btn.className = 'assign-btn';
+        if (pm && data.assigned_pm === pm && data.status === 'pending') {
+            btn.classList.add('active-' + pm.toLowerCase());
+        } else if (action === 'overhead' && data.status === 'overhead') {
+            btn.classList.add('active-overhead');
+        } else if (action === 'group' && data.group_with_prev) {
+            btn.classList.add('active-grouped');
+        } else if (action === 'skip' && data.status === 'skipped') {
+            btn.classList.add('active-skipped');
+        }
+    });
 
     // Show/hide overhead fields
     const ohFields = document.getElementById('overhead-' + pageNum);
     ohFields.style.display = data.status === 'overhead' ? 'block' : 'none';
+}
+
+function updateCounts() {
+    const counts = {};
+    let overhead = 0, grouped = 0, skipped = 0, unassigned = 0;
+    for (const data of Object.values(pageData)) {
+        if (data.group_with_prev) { grouped++; continue; }
+        if (data.status === 'overhead') { overhead++; continue; }
+        if (data.status === 'skipped') { skipped++; continue; }
+        if (data.assigned_pm) {
+            counts[data.assigned_pm] = (counts[data.assigned_pm] || 0) + 1;
+        } else {
+            unassigned++;
+        }
+    }
+    let parts = [];
+    for (const [pm, n] of Object.entries(counts)) parts.push(pm + ': ' + n);
+    if (overhead) parts.push('Overhead: ' + overhead);
+    if (grouped) parts.push('Grouped: ' + grouped);
+    if (skipped) parts.push('Skip: ' + skipped);
+    if (unassigned) parts.push('Unassigned: ' + unassigned);
+    document.getElementById('assignCounts').textContent = parts.join(' | ');
 }
 
 function collectOverheadCoding(pageNum) {
@@ -342,7 +419,6 @@ async function saveAndDistribute() {
     document.body.appendChild(statusDiv);
 
     try {
-        // Save first
         const saveResp = await fetch(`/api/prescreen/${batchId}/save`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -357,7 +433,6 @@ async function saveAndDistribute() {
 
         statusDiv.textContent = 'Saved. Now distributing to PMs...';
 
-        // Then distribute
         const distResp = await fetch(`/api/prescreen/${batchId}/distribute`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -389,6 +464,14 @@ function closeModal() {
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeModal();
+});
+
+// Initialize displays
+window.addEventListener('DOMContentLoaded', () => {
+    for (const pageNum of Object.keys(pageData)) {
+        updateCardDisplay(parseInt(pageNum));
+    }
+    updateCounts();
 });
 </script>
 {% endblock %}

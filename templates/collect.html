@@ -3,25 +3,74 @@
 
 {% block content %}
 <div class="card">
-    <h2>Coded PDFs from PMs</h2>
-    <p style="font-size: 13px; color: #666; margin-bottom: 12px;">
-        Place coded PDFs from PMs in <code>data/pm-inbox/</code> then refresh this page.
-    </p>
-
-    {% if results %}
+    <h2>PM Coding Status</h2>
+    {% if assignments %}
     <form action="{{ url_for('export_view') }}" method="post">
+        <input type="hidden" name="type" value="browser">
         <table>
             <thead>
                 <tr>
                     <th><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
-                    <th>File</th>
-                    <th>Pages</th>
-                    <th>Coded Pages</th>
+                    <th>PM</th>
+                    <th>Batch</th>
+                    <th>Coded Lines</th>
                     <th>Status</th>
+                    <th>Link</th>
                 </tr>
             </thead>
             <tbody>
-                {% for item in results %}
+                {% for a in assignments %}
+                <tr>
+                    <td>
+                        {% if a.status == 'completed' %}
+                        <input type="checkbox" name="tokens" value="{{ a.token }}" checked>
+                        {% endif %}
+                    </td>
+                    <td>{{ a.pm_name }}</td>
+                    <td><code>{{ a.batch_id }}</code></td>
+                    <td>{{ a.coded_count }}</td>
+                    <td>
+                        {% if a.status == 'completed' %}
+                        <span class="badge badge-grouped">Completed</span>
+                        {% elif a.status == 'in_progress' %}
+                        <span class="badge badge-pending">In Progress</span>
+                        {% else %}
+                        <span class="badge badge-skipped">Pending</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('pm_coding_page', token=a.token) }}"
+                           class="btn btn-sm btn-primary">View</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div style="margin-top: 16px;">
+            <button type="submit" class="btn btn-success">Export Completed to CE XML</button>
+        </div>
+    </form>
+    {% else %}
+    <p style="color: #999;">No coding assignments yet. Distribute invoices from the pre-screening step first.</p>
+    {% endif %}
+</div>
+
+{% if pdf_results %}
+<div class="card">
+    <h2>Legacy: Coded PDFs from PM Inbox</h2>
+    <form action="{{ url_for('export_view') }}" method="post">
+        <input type="hidden" name="type" value="pdf">
+        <table>
+            <thead>
+                <tr>
+                    <th><input type="checkbox" onchange="toggleAllPdf(this)"></th>
+                    <th>File</th>
+                    <th>Pages</th>
+                    <th>Coded</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in pdf_results %}
                 <tr>
                     <td>
                         {% if not item.error %}
@@ -31,73 +80,25 @@
                     <td>{{ item.filename }}</td>
                     <td>{{ item.total_pages or '-' }}</td>
                     <td>{{ item.coded_pages or '-' }}</td>
-                    <td>
-                        {% if item.error %}
-                        <span class="badge badge-skipped">Error: {{ item.error }}</span>
-                        {% elif item.coded_pages == item.total_pages %}
-                        <span class="badge badge-grouped">Fully Coded</span>
-                        {% else %}
-                        <span class="badge badge-pending">{{ item.coded_pages }}/{{ item.total_pages }} coded</span>
-                        {% endif %}
-                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         <div style="margin-top: 16px;">
-            <button type="submit" class="btn btn-success">Export Selected to CE XML</button>
+            <button type="submit" class="btn btn-success">Export PDFs to CE XML</button>
         </div>
     </form>
-    {% else %}
-    <p style="color: #999;">No coded PDFs found in <code>data/pm-inbox/</code>.</p>
-    {% endif %}
-</div>
-
-{% if results %}
-<div class="card">
-    <h2>Coding Details</h2>
-    {% for item in results %}
-    {% if not item.error %}
-    <h3 style="margin: 16px 0 8px; font-size: 14px;">{{ item.filename }}</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>Page</th>
-                <th>Job</th>
-                <th>Phase</th>
-                <th>Cost Code</th>
-                <th>Amount</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for page in item.pages %}
-            {% for coding in page.codings %}
-            <tr>
-                <td>{{ page.page }}</td>
-                <td>{{ coding.job }}</td>
-                <td>{{ coding.phase }}</td>
-                <td>{{ coding.cost }}</td>
-                <td>{{ coding.amount or '-' }}</td>
-            </tr>
-            {% endfor %}
-            {% if not page.codings %}
-            <tr><td>{{ page.page }}</td><td colspan="4" style="color: #999;">Not coded</td></tr>
-            {% endif %}
-            {% endfor %}
-        </tbody>
-    </table>
-    {% endif %}
-    {% endfor %}
 </div>
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
-function toggleAll(checkbox) {
-    document.querySelectorAll('input[name="files"]').forEach(cb => {
-        cb.checked = checkbox.checked;
-    });
+function toggleAll(cb) {
+    document.querySelectorAll('input[name="tokens"]').forEach(x => x.checked = cb.checked);
+}
+function toggleAllPdf(cb) {
+    document.querySelectorAll('input[name="files"]').forEach(x => x.checked = cb.checked);
 }
 </script>
 {% endblock %}

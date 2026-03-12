@@ -9,7 +9,7 @@ from datetime import datetime
 from .config_loader import load_pm_assignments, CONFIG_DIR, BASE_DIR
 
 
-def send_pm_notification(pm_key, invoice_count, folder_path=None):
+def send_pm_notification(pm_key, invoice_count, coding_url=None):
     """Send an email to a PM notifying them of invoices to code."""
     config = load_pm_assignments()
     email_config = config.get("email", {})
@@ -42,14 +42,13 @@ def send_pm_notification(pm_key, invoice_count, folder_path=None):
         date=date_str
     )
 
-    if not folder_path:
-        folder_path = pm_info.get("onedrive_folder", "your shared folder")
-
-    body_template = email_config.get("body_template", "You have {invoice_count} invoices to code.")
+    body_template = email_config.get("body_template",
+        "Hi {pm_name},\n\nYou have {invoice_count} invoice(s) ready for coding.\n\n"
+        "Click here to code them:\n{coding_url}\n\nThanks")
     body = body_template.format(
         pm_name=pm_info["name"],
         invoice_count=invoice_count,
-        folder_path=folder_path,
+        coding_url=coding_url or "",
         date=date_str,
     )
 
@@ -74,7 +73,10 @@ def send_pm_notification(pm_key, invoice_count, folder_path=None):
 def notify_all_pms(distribution_results):
     """Send notifications to all PMs that received invoices."""
     config = load_pm_assignments()
+    app_url = config.get("email", {}).get("app_url", "")
     results = {}
+
+    pm_links = distribution_results.get("pm_links", {})
 
     for pm_name, file_path in distribution_results.get("pm_files", {}).items():
         # Find PM key by name
@@ -85,9 +87,9 @@ def notify_all_pms(distribution_results):
                 break
 
         if pm_key:
-            pm_info = config["project_managers"][pm_key]
-            folder = pm_info.get("onedrive_folder", "")
-            result = send_pm_notification(pm_key, invoice_count=1, folder_path=folder)
+            token = pm_links.get(pm_name, "")
+            coding_url = f"{app_url}/code/{token}" if app_url and token else ""
+            result = send_pm_notification(pm_key, invoice_count=1, coding_url=coding_url)
             results[pm_name] = result
 
     return results

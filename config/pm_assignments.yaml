@@ -29,14 +29,15 @@ email:
   smtp_port: 587
   sender_email: ""      # Your Outlook email
   # Store password in .env file, NOT here (see .env.example)
+  app_url: ""            # e.g. https://your-codespace-5000.app.github.dev
   subject_template: "Invoices Ready for Coding - {date}"
   body_template: |
     Hi {pm_name},
 
     You have {invoice_count} invoice(s) ready for coding.
 
-    Please open your folder and code the invoices:
-    {folder_path}
+    Click here to code them:
+    {coding_url}
 
     Thanks
 

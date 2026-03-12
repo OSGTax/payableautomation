@@ -359,14 +359,15 @@ async function saveAndDistribute() {
         const routing = result.results.file_routing || {};
         const emails = result.results.email_notifications || {};
 
+        const pmLinks = result.results.pm_links || {};
+
         let msg = 'Distributed to PMs: ' + (names.length ? names.join(', ') : 'none') +
               '\nOverhead: ' + (result.results.overhead_count || 0) + ' invoices';
 
-        // File routing status
-        for (const [pm, r] of Object.entries(routing)) {
-            msg += r.copied
-                ? `\n  ${pm}: copied to OneDrive`
-                : `\n  ${pm}: not copied - ${r.reason}`;
+        // PM coding links
+        msg += '\n\nCoding links:';
+        for (const [pm, token] of Object.entries(pmLinks)) {
+            msg += `\n  ${pm}: ${window.location.origin}/code/${token}`;
         }
 
         // Email status
@@ -377,7 +378,7 @@ async function saveAndDistribute() {
         }
 
         alert(msg);
-        window.location.href = '/';
+        window.location.href = '/collect';
     } else {
         alert('Error distributing.');
     }

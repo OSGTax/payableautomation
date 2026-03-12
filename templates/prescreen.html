@@ -356,8 +356,27 @@ async function saveAndDistribute() {
         const result = await distResp.json();
         const pmFiles = result.results.pm_files || {};
         const names = Object.keys(pmFiles);
-        alert('Distributed to PMs: ' + (names.length ? names.join(', ') : 'none') +
-              '\nOverhead: ' + (result.results.overhead_count || 0) + ' invoices');
+        const routing = result.results.file_routing || {};
+        const emails = result.results.email_notifications || {};
+
+        let msg = 'Distributed to PMs: ' + (names.length ? names.join(', ') : 'none') +
+              '\nOverhead: ' + (result.results.overhead_count || 0) + ' invoices';
+
+        // File routing status
+        for (const [pm, r] of Object.entries(routing)) {
+            msg += r.copied
+                ? `\n  ${pm}: copied to OneDrive`
+                : `\n  ${pm}: not copied - ${r.reason}`;
+        }
+
+        // Email status
+        for (const [pm, e] of Object.entries(emails)) {
+            msg += e.sent
+                ? `\n  ${pm}: email sent to ${e.to}`
+                : `\n  ${pm}: email not sent - ${e.reason}`;
+        }
+
+        alert(msg);
         window.location.href = '/';
     } else {
         alert('Error distributing.');

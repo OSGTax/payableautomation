@@ -17,6 +17,8 @@ from .intake import split_pdf_to_pages, load_batch, save_batch, list_batches, IN
 from .prepare import group_and_distribute
 from .collect import scan_pm_inbox, read_coded_pdf
 from .export import export_coded_pdfs_to_xml
+from .file_router import route_all_pm_files
+from .notify import notify_all_pms
 
 app = Flask(
     __name__,
@@ -140,6 +142,15 @@ def save_prescreen(batch_id):
 def distribute(batch_id):
     """Finalize pre-screening and distribute to PMs."""
     results = group_and_distribute(batch_id)
+
+    # Copy PDFs to OneDrive sync folders
+    route_results = route_all_pm_files(results)
+    results["file_routing"] = route_results
+
+    # Send email notifications
+    email_results = notify_all_pms(results)
+    results["email_notifications"] = email_results
+
     return jsonify({"status": "ok", "results": results})
 
 

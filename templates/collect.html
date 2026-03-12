@@ -41,6 +41,9 @@
                     <td>
                         <a href="{{ url_for('pm_coding_page', token=a.token) }}"
                            class="btn btn-sm btn-primary">View</a>
+                        <button class="btn btn-sm btn-warning"
+                                onclick="copyLink('{{ a.token }}')"
+                                title="Copy coding link to clipboard">Copy Link</button>
                     </td>
                 </tr>
                 {% endfor %}
@@ -99,6 +102,14 @@ function toggleAll(cb) {
 }
 function toggleAllPdf(cb) {
     document.querySelectorAll('input[name="files"]').forEach(x => x.checked = cb.checked);
+}
+function copyLink(token) {
+    const url = window.location.origin + '/code/' + token;
+    navigator.clipboard.writeText(url).then(() => {
+        alert('Link copied: ' + url);
+    }).catch(() => {
+        prompt('Copy this link:', url);
+    });
 }
 </script>
 {% endblock %}
